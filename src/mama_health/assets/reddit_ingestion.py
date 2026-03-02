@@ -1,7 +1,8 @@
 """Dagster assets for Reddit data ingestion."""
 
 import json
-from datetime import datetime
+import os
+from datetime import datetime, timedelta, timezone
 
 from dagster import asset, get_dagster_logger
 
@@ -9,6 +10,39 @@ from mama_health.config import AppConfig
 from mama_health.reddit_client import RedditClient
 
 logger = get_dagster_logger()
+
+CHECKPOINT_FILE = ".ingestion_checkpoint.json"
+
+
+def _load_checkpoint() -> datetime | None:
+    """Load the last ingestion checkpoint timestamp.
+
+    Returns:
+        Datetime of last successful ingestion, or None if no checkpoint exists
+    """
+    if not os.path.exists(CHECKPOINT_FILE):
+        return None
+    try:
+        with open(CHECKPOINT_FILE) as f:
+            data = json.load(f)
+        return datetime.fromisoformat(data["last_ingested_at"])
+    except Exception as e:
+        logger.warning(f"Failed to load checkpoint: {e}")
+        return None
+
+
+def _save_checkpoint(timestamp: datetime) -> None:
+    """Save the ingestion checkpoint timestamp.
+
+    Args:
+        timestamp: Datetime to save as last successful ingestion
+    """
+    try:
+        with open(CHECKPOINT_FILE, "w") as f:
+            json.dump({"last_ingested_at": timestamp.isoformat()}, f)
+        logger.info(f"Checkpoint saved: {timestamp.isoformat()}")
+    except Exception as e:
+        logger.warning(f"Failed to save checkpoint: {e}")
 
 
 @asset
@@ -23,57 +57,13 @@ def reddit_client() -> RedditClient:
 
 
 @asset
-def raw_posts(reddit_client: RedditClient) -> list[dict]:
-    """Fetch raw posts from subreddit.
-
-    This asset retrieves posts from the configured subreddit using the Reddit API.
-    Posts are stored as dictionaries (JSON-serializable format).
-
-    Args:
-        reddit_client: Configured Reddit API client
-
-    Returns:
-        List of dictionaries representing Reddit posts
-    """
-    config = AppConfig()
-
-    logger.info(
-        f"Fetching posts from r/{config.pipeline.target_subreddit} "
-        f"(limit: {config.pipeline.posts_limit})"
-    )
-
-    posts = reddit_client.fetch_posts(
-        subreddit_name=config.pipeline.target_subreddit,
-        limit=config.pipeline.posts_limit,
-        time_filter="month",
-    )
-
-    # Convert to dictionaries for storage
-    posts_dict = [
-        {
-            "post_id": post.id,
-            "title": post.title,
-            "content": post.selftext,
-            "author": post.author.name if post.author else "[deleted]",
-            "subreddit": post.subreddit.display_name,
-            "score": post.score,
-            "num_comments": post.num_comments,
-            "created_at": datetime.fromtimestamp(post.created_utc).isoformat(),
-            "url": post.url,
-        }
-        for post in posts
-    ]
-
-    logger.info(f"Successfully fetched {len(posts_dict)} posts")
-    return posts_dict
-
-
-@asset
 def posts_with_comments(reddit_client: RedditClient) -> list[dict]:
     """Fetch posts with their comments from subreddit.
 
     This asset retrieves complete posts including all comments, implementing
     the full workflow for gathering community discussion around health topics.
+    Incremental loading is supported via a checkpoint file — only posts newer
+    than the last successful run are returned.
 
     Args:
         reddit_client: Configured Reddit API client
@@ -82,6 +72,18 @@ def posts_with_comments(reddit_client: RedditClient) -> list[dict]:
         List of dictionaries representing posts with nested comments
     """
     config = AppConfig()
+
+    # Determine cutoff: resume from checkpoint or fall back to search_limit_days
+    checkpoint_ts = _load_checkpoint()
+    if checkpoint_ts is not None:
+        cutoff = checkpoint_ts
+        logger.info(f"Resuming from checkpoint: {cutoff.isoformat()}")
+    else:
+        cutoff = datetime.now(tz=timezone.utc) - timedelta(days=config.pipeline.search_limit_days)
+        logger.info(
+            f"No checkpoint found — fetching last {config.pipeline.search_limit_days} days "
+            f"(cutoff: {cutoff.isoformat()})"
+        )
 
     logger.info(
         f"Fetching posts with comments from r/{config.pipeline.target_subreddit} "
@@ -93,6 +95,14 @@ def posts_with_comments(reddit_client: RedditClient) -> list[dict]:
         posts_limit=config.pipeline.posts_limit,
         comments_limit=config.pipeline.comments_limit,
         time_filter="month",
+    )
+
+    # Apply date filter — keep only posts newer than the cutoff
+    cutoff_naive = cutoff.replace(tzinfo=None)
+    filtered_posts = [p for p in posts if p.created_at >= cutoff_naive]
+
+    logger.info(
+        f"Date filter: {len(posts)} fetched → {len(filtered_posts)} posts after cutoff"
     )
 
     # Convert to dictionaries for storage
@@ -120,8 +130,13 @@ def posts_with_comments(reddit_client: RedditClient) -> list[dict]:
                 for comment in post.comments
             ],
         }
-        for post in posts
+        for post in filtered_posts
     ]
+
+    # Save checkpoint to the latest post timestamp
+    if posts_dict:
+        latest_ts = max(datetime.fromisoformat(p["created_at"]) for p in posts_dict)
+        _save_checkpoint(latest_ts)
 
     logger.info(
         f"Successfully fetched {len(posts_dict)} posts with "

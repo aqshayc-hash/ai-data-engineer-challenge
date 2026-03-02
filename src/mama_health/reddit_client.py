@@ -123,8 +123,9 @@ class RedditClient:
         try:
             self._rate_limit()
 
-            # Replace more comments with actual comments
-            submission.comments.replace_more(limit=None)
+            # Discard "load more" stubs — only use already-loaded comments
+            # (limit=None would expand every stub, making hundreds of extra API calls)
+            submission.comments.replace_more(limit=0)
 
             comments = []
             for i, comment in enumerate(submission.comments.list()):

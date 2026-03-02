@@ -26,7 +26,6 @@ from mama_health.assets.llm_extraction import (
 from mama_health.assets.reddit_ingestion import (
     posts_metadata,
     posts_with_comments,
-    raw_posts,
     raw_posts_json,
     reddit_client,
 )
@@ -34,7 +33,6 @@ from mama_health.assets.reddit_ingestion import (
 __all__ = [
     # Reddit ingestion
     "reddit_client",
-    "raw_posts",
     "posts_with_comments",
     "raw_posts_json",
     "posts_metadata",

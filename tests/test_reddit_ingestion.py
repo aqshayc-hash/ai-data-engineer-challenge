@@ -1,12 +1,15 @@
 """Tests for Reddit ingestion."""
 
+import json
 import pytest
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from mama_health.models import RedditComment, RedditPost
 from mama_health.reddit_client import RedditClient
 from mama_health.config import RedditConfig
+from mama_health.assets.reddit_ingestion import _load_checkpoint, _save_checkpoint
 
 
 @pytest.fixture
@@ -116,9 +119,47 @@ def test_rate_limiting():
         user_agent="test",
         rate_limit_per_minute=120,  # 0.5s between requests
     )
-    
+
     with patch('mama_health.reddit_client.praw.Reddit'):
         client = RedditClient(config)
-        
+
         # Min interval should be 60/120 = 0.5 seconds
         assert client.min_request_interval == 0.5
+
+
+# ===== Checkpoint helper tests =====
+
+def test_load_checkpoint_no_file(tmp_path, monkeypatch):
+    """Returns None when checkpoint file does not exist."""
+    monkeypatch.chdir(tmp_path)
+    result = _load_checkpoint()
+    assert result is None
+
+
+def test_save_and_load_checkpoint(tmp_path, monkeypatch):
+    """Saved checkpoint can be read back correctly."""
+    monkeypatch.chdir(tmp_path)
+    ts = datetime(2025, 6, 15, 12, 0, 0)
+    _save_checkpoint(ts)
+    loaded = _load_checkpoint()
+    assert loaded == ts
+
+
+def test_load_checkpoint_corrupted_file(tmp_path, monkeypatch):
+    """Returns None gracefully when checkpoint file is corrupted."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".ingestion_checkpoint.json").write_text("not valid json")
+    result = _load_checkpoint()
+    assert result is None
+
+
+def test_save_checkpoint_creates_file(tmp_path, monkeypatch):
+    """Saving a checkpoint writes a JSON file with the expected key."""
+    monkeypatch.chdir(tmp_path)
+    ts = datetime(2025, 1, 1, 0, 0, 0)
+    _save_checkpoint(ts)
+    checkpoint_file = tmp_path / ".ingestion_checkpoint.json"
+    assert checkpoint_file.exists()
+    data = json.loads(checkpoint_file.read_text())
+    assert "last_ingested_at" in data
+    assert data["last_ingested_at"] == ts.isoformat()

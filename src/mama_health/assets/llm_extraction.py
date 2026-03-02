@@ -173,10 +173,7 @@ def symptom_mentions(
 
             prompt = get_prompt_variant("symptoms", text, f"Post: {post['post_id']}")
 
-            config = AppConfig()
-            extractor = LLMExtractor(config)
-
-            response = extractor._call_llm(prompt)
+            response = llm_extractor._call_llm(prompt)
             json_str = LLMExtractor._extract_json(response)
 
             if json_str:
@@ -231,10 +228,7 @@ def medication_mentions(
 
             prompt = get_prompt_variant("medications", text, f"Post: {post['post_id']}")
 
-            config = AppConfig()
-            extractor = LLMExtractor(config)
-
-            response = extractor._call_llm(prompt)
+            response = llm_extractor._call_llm(prompt)
             json_str = LLMExtractor._extract_json(response)
 
             if json_str:
