@@ -11,7 +11,7 @@ from mama_health.reddit_client import RedditClient
 
 logger = get_dagster_logger()
 
-CHECKPOINT_FILE = ".ingestion_checkpoint.json"
+CHECKPOINT_FILE = os.environ.get("CHECKPOINT_PATH", ".ingestion_checkpoint.json")
 
 
 def _load_checkpoint() -> datetime | None:
