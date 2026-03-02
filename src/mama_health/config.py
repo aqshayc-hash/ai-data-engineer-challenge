@@ -66,7 +66,12 @@ class PipelineConfig(BaseSettings):
 
 
 class AppConfig(BaseSettings):
-    """Main application configuration."""
+    """Main application configuration.
+
+    Aggregates all sub-configs. Each nested config reads its own env vars
+    independently via its own prefix (e.g. REDDIT_*, GOOGLE_*, LLM_*).
+    Supports loading from a .env file for local development.
+    """
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 from typing import Optional
 
 import litellm
@@ -80,6 +81,9 @@ class LLMExtractor:
             raise ValueError("GOOGLE_API_KEY is required")
 
         self.model = self.llm_config.model
+
+        # Set API key once at initialization — litellm reads it from the environment
+        os.environ["GOOGLE_API_KEY"] = self.google_config.api_key
 
         logger.info(f"Initialized LLM extractor with model: {self.model}")
 
@@ -168,11 +172,6 @@ class LLMExtractor:
         Raises:
             RuntimeError: If LLM call fails after retries
         """
-        import os
-
-        # Set API key for this call
-        os.environ["GOOGLE_API_KEY"] = self.google_config.api_key
-
         for attempt in range(retries):
             try:
                 response = litellm.completion(

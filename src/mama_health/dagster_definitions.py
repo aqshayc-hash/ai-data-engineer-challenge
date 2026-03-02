@@ -14,7 +14,17 @@ asset_list = load_assets_from_package_module(assets)
 
 
 def get_definitions() -> Definitions:
-    """Return Dagster definitions."""
+    """Build and return Dagster definitions for the mama health pipeline.
+
+    Registers all assets and defines four runnable jobs:
+    - reddit_ingestion_job: fetch posts and comments from Reddit
+    - llm_extraction_job: extract patient journey events via LLM
+    - analytics_job: run all analytical assets
+    - end_to_end_job: complete pipeline from ingestion to analytics
+
+    Returns:
+        Configured Dagster Definitions object
+    """
 
     # Define the Reddit ingestion job
     reddit_ingestion_job = define_asset_job(

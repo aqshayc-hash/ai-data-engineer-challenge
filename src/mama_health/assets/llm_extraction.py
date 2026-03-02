@@ -1,11 +1,13 @@
 """Dagster assets for LLM-powered patient journey extraction."""
 
+import json
 
 from dagster import asset, get_dagster_logger
 
 from mama_health.config import AppConfig
 from mama_health.llm_extractor import LLMExtractor
 from mama_health.models import PatientJourneyEvent
+from mama_health.prompts import get_prompt_variant
 
 logger = get_dagster_logger()
 
@@ -167,10 +169,6 @@ def symptom_mentions(
 
         try:
             # Use symptom-specialized extraction
-            import json
-
-            from mama_health.prompts import get_prompt_variant
-
             prompt = get_prompt_variant("symptoms", text, f"Post: {post['post_id']}")
 
             response = llm_extractor._call_llm(prompt)
@@ -222,10 +220,6 @@ def medication_mentions(
 
         try:
             # Use medication-specialized extraction
-            import json
-
-            from mama_health.prompts import get_prompt_variant
-
             prompt = get_prompt_variant("medications", text, f"Post: {post['post_id']}")
 
             response = llm_extractor._call_llm(prompt)

@@ -1,9 +1,36 @@
 """Data models for Reddit and patient journey data."""
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+# Valid event and entity types — mirrors the enums in prompts.py
+EventTypeLiteral = Literal[
+    "symptom_onset",
+    "symptom_progression",
+    "medical_visit",
+    "diagnosis",
+    "treatment_initiated",
+    "treatment_changed",
+    "medication_side_effect",
+    "treatment_outcome",
+    "emotional_state",
+    "lifestyle_change",
+    "unmet_need",
+    "other",
+]
+
+EntityTypeLiteral = Literal[
+    "symptom",
+    "condition",
+    "medication",
+    "procedure",
+    "specialist",
+    "emotion",
+    "duration",
+    "other",
+]
 
 
 class RedditComment(BaseModel):
@@ -87,10 +114,10 @@ class PatientJourneyEvent(BaseModel):
     event_id: str = Field(..., description="Unique event identifier")
     source_post_id: str = Field(..., description="Source Reddit post ID")
     source_comment_id: Optional[str] = Field(None, description="Source comment ID if from comment")
-    event_type: str = Field(..., description="Type of event (symptom, diagnosis, treatment, etc)")
+    event_type: EventTypeLiteral = Field(..., description="Type of event (symptom, diagnosis, treatment, etc)")
     description: str = Field(..., description="Human-readable description")
     mentioned_entity: str = Field(..., description="Main entity mentioned (e.g. medication name)")
-    entity_type: str = Field(..., description="Type of entity (medication, symptom, procedure, etc)")
+    entity_type: EntityTypeLiteral = Field(..., description="Type of entity (medication, symptom, procedure, etc)")
     timestamp_mentioned: Optional[datetime] = Field(None, description="When event occurred")
     timestamp_posted: datetime = Field(..., description="When post/comment was made")
-    confidence: float = Field(..., description="Extraction confidence score (0-1)")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Extraction confidence score (0-1)")
