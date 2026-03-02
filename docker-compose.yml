@@ -1,0 +1,118 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: mama-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dagster}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dagster}
+      POSTGRES_DB: ${POSTGRES_DB:-mama_health}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dagster}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mama-network
+
+  # User code server — runs the actual mama_health pipeline code via gRPC
+  dagster-user-code:
+    build: .
+    image: mama-health-dagster:latest
+    container_name: mama-user-code
+    command:
+      - dagster
+      - api
+      - grpc
+      - -h
+      - "0.0.0.0"
+      - -p
+      - "4000"
+      - -f
+      - src/mama_health/dagster_definitions.py
+      - -a
+      - defs
+    environment:
+      DAGSTER_HOME: /app
+      DAGSTER_POSTGRES_USER: ${POSTGRES_USER:-dagster}
+      DAGSTER_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dagster}
+      DAGSTER_POSTGRES_HOST: postgres
+      DAGSTER_POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      DAGSTER_POSTGRES_DB: ${POSTGRES_DB:-mama_health}
+      PYTHONUNBUFFERED: "1"
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      REDDIT_CLIENT_ID: ${REDDIT_CLIENT_ID}
+      REDDIT_CLIENT_SECRET: ${REDDIT_CLIENT_SECRET}
+      REDDIT_USER_AGENT: ${REDDIT_USER_AGENT}
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - mama-network
+
+  dagster-webserver:
+    build: .
+    image: mama-health-dagster:latest
+    container_name: mama-dagster-webserver
+    command:
+      - dagster-webserver
+      - -h
+      - "0.0.0.0"
+      - -p
+      - "3000"
+      - -w
+      - workspace.yaml
+    ports:
+      - "${DAGSTER_WEBSERVER_PORT:-3000}:3000"
+    environment:
+      DAGSTER_HOME: /app
+      DAGSTER_POSTGRES_USER: ${POSTGRES_USER:-dagster}
+      DAGSTER_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dagster}
+      DAGSTER_POSTGRES_HOST: postgres
+      DAGSTER_POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      DAGSTER_POSTGRES_DB: ${POSTGRES_DB:-mama_health}
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      dagster-user-code:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    networks:
+      - mama-network
+
+  dagster-daemon:
+    build: .
+    image: mama-health-dagster:latest
+    container_name: mama-dagster-daemon
+    command:
+      - dagster-daemon
+      - run
+      - -w
+      - workspace.yaml
+    environment:
+      DAGSTER_HOME: /app
+      DAGSTER_POSTGRES_USER: ${POSTGRES_USER:-dagster}
+      DAGSTER_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dagster}
+      DAGSTER_POSTGRES_HOST: postgres
+      DAGSTER_POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      DAGSTER_POSTGRES_DB: ${POSTGRES_DB:-mama_health}
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      dagster-user-code:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    networks:
+      - mama-network
+
+volumes:
+  postgres_data:
+
+networks:
+  mama-network:
+    driver: bridge
