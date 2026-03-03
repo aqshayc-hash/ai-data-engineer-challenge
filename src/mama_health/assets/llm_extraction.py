@@ -46,15 +46,15 @@ def extracted_post_events(
 
     for post in posts_with_comments:
         # Combine title and content for better context
-        text = f"{post['title']}\n\n{post['content']}" if post['content'] else post['title']
+        text = f"{post['title']}\n\n{post['content']}" if post["content"] else post["title"]
 
         if not text or not text.strip():
             continue
 
         events = llm_extractor.extract_events(
             text=text,
-            source_post_id=post['post_id'],
-            posted_timestamp=post['created_at'],
+            source_post_id=post["post_id"],
+            posted_timestamp=post["created_at"],
             min_confidence=0.5,
             prompt_type="general",
         )
@@ -86,18 +86,18 @@ def extracted_comment_events(
     total_comments = 0
 
     for post in posts_with_comments:
-        for comment in post.get('comments', []):
+        for comment in post.get("comments", []):
             total_comments += 1
 
-            text = comment['text']
+            text = comment["text"]
             if not text or not text.strip():
                 continue
 
             events = llm_extractor.extract_events(
                 text=text,
-                source_post_id=post['post_id'],
-                source_comment_id=comment['comment_id'],
-                posted_timestamp=comment['created_at'],
+                source_post_id=post["post_id"],
+                source_comment_id=comment["comment_id"],
+                posted_timestamp=comment["created_at"],
                 min_confidence=0.5,
                 prompt_type="general",
             )
@@ -131,13 +131,13 @@ def all_extracted_events(
     logger.info(f"  From comments: {len(extracted_comment_events)}")
 
     # Log event type distribution
-    event_types = {}
+    event_types: dict[str, int] = {}
     for event in all_events:
         event_type = event.event_type
         event_types[event_type] = event_types.get(event_type, 0) + 1
 
     logger.info("Event type distribution:")
-    for event_type, count in sorted(event_types.items(), key=lambda x: x[1], reverse=True):
+    for event_type, count in sorted(event_types.items(), key=lambda x: x[1], reverse=True):  # type: ignore[assignment]
         logger.info(f"  {event_type}: {count}")
 
     return all_events
@@ -163,7 +163,7 @@ def symptom_mentions(
     all_symptoms = []
 
     for post in posts_with_comments:
-        text = f"{post['title']}\n\n{post['content']}" if post['content'] else post['title']
+        text = f"{post['title']}\n\n{post['content']}" if post["content"] else post["title"]
 
         if not text or not text.strip():
             continue
@@ -177,11 +177,11 @@ def symptom_mentions(
 
             if json_str:
                 data = json.loads(json_str)
-                symptoms = data.get('symptoms', [])
+                symptoms = data.get("symptoms", [])
 
                 for symptom in symptoms:
-                    symptom['source_post_id'] = post['post_id']
-                    symptom['source_created_at'] = post['created_at']
+                    symptom["source_post_id"] = post["post_id"]
+                    symptom["source_created_at"] = post["created_at"]
                     all_symptoms.append(symptom)
 
         except Exception as e:
@@ -214,7 +214,7 @@ def medication_mentions(
     all_medications = []
 
     for post in posts_with_comments:
-        text = f"{post['title']}\n\n{post['content']}" if post['content'] else post['title']
+        text = f"{post['title']}\n\n{post['content']}" if post["content"] else post["title"]
 
         if not text or not text.strip():
             continue
@@ -228,11 +228,11 @@ def medication_mentions(
 
             if json_str:
                 data = json.loads(json_str)
-                medications = data.get('medications', [])
+                medications = data.get("medications", [])
 
                 for medication in medications:
-                    medication['source_post_id'] = post['post_id']
-                    medication['source_created_at'] = post['created_at']
+                    medication["source_post_id"] = post["post_id"]
+                    medication["source_created_at"] = post["created_at"]
                     all_medications.append(medication)
 
         except Exception as e:

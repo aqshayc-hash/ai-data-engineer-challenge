@@ -227,7 +227,7 @@ def get_prompt_variant(prompt_type: str, text: str, context: Optional[str] = Non
     """
     context_str = f"\nCONTEXT: {context}" if context else ""
 
-    base_text = f"TEXT TO ANALYZE:\n\"\"\"\n{text}\n\"\"\""
+    base_text = f'TEXT TO ANALYZE:\n"""\n{text}\n"""'
 
     prompts = {
         "general": create_extraction_prompt(text, context),

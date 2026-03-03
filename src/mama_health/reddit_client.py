@@ -28,7 +28,7 @@ class RedditClient:
             ValueError: If client initialization fails
         """
         self.config = config
-        self.last_request_time = 0
+        self.last_request_time: float = 0.0
         self.min_request_interval = 60 / config.rate_limit_per_minute
 
         try:
@@ -42,7 +42,9 @@ class RedditClient:
             # Verify authentication only when credentials are provided
             if config.username and config.password:
                 _ = self.reddit.user.me()
-                logger.info("Successfully authenticated with Reddit API (user: %s)", config.username)
+                logger.info(
+                    "Successfully authenticated with Reddit API (user: %s)", config.username
+                )
             else:
                 logger.info("Initialized Reddit client in read-only mode")
         except PrawException as e:
@@ -144,7 +146,9 @@ class RedditClient:
                         text=comment.body,
                         score=comment.score,
                         created_at=datetime.fromtimestamp(comment.created_utc),
-                        parent_comment_id=comment.parent_id.split("_")[1] if "_" in comment.parent_id else None,
+                        parent_comment_id=comment.parent_id.split("_")[1]
+                        if "_" in comment.parent_id
+                        else None,
                     )
                     comments.append(reddit_comment)
                 except Exception as e:
@@ -219,5 +223,7 @@ class RedditClient:
                 logger.warning(f"Failed to process post {submission.id}: {e}")
                 continue
 
-        logger.info(f"Successfully fetched {len(posts)} posts with comments from r/{subreddit_name}")
+        logger.info(
+            f"Successfully fetched {len(posts)} posts with comments from r/{subreddit_name}"
+        )
         return posts

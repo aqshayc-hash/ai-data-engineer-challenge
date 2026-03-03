@@ -80,7 +80,8 @@ def get_definitions() -> Definitions:
     # Weekly schedule: run end_to_end_job every Sunday at 2 AM UTC
     weekly_pipeline_schedule = build_schedule_from_partitioned_job(
         end_to_end_job,
-        cron_schedule="0 2 * * 0",
+        hour_of_day=2,
+        day_of_week=6,  # 0=Monday … 6=Sunday
         name="weekly_pipeline_schedule",
     )
 

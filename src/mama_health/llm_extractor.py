@@ -47,10 +47,10 @@ class ExtractedEvent(BaseModel):
             event_id=self.event_id,
             source_post_id=source_post_id,
             source_comment_id=source_comment_id,
-            event_type=self.event_type,
+            event_type=self.event_type,  # type: ignore[arg-type]
             description=self.description,
             mentioned_entity=self.mentioned_entity,
-            entity_type=self.entity_type,
+            entity_type=self.entity_type,  # type: ignore[arg-type]
             timestamp_mentioned=None,  # Could be parsed from temporal_indicators
             timestamp_posted=posted_dt,
             confidence=self.confidence,
@@ -128,11 +128,7 @@ class LLMExtractor:
             events = self._parse_response(response)
 
             # Filter by confidence
-            filtered_events = [
-                event
-                for event in events
-                if event.confidence >= min_confidence
-            ]
+            filtered_events = [event for event in events if event.confidence >= min_confidence]
 
             # Convert to PatientJourneyEvent
             journey_events = [
@@ -185,7 +181,7 @@ class LLMExtractor:
                     timeout=self.llm_config.request_timeout,
                 )
 
-                return response.choices[0].message.content
+                return response.choices[0].message.content  # type: ignore[no-any-return]
 
             except Exception as e:
                 if attempt < retries - 1:
@@ -193,6 +189,8 @@ class LLMExtractor:
                     continue
                 else:
                     raise RuntimeError(f"LLM extraction failed after {retries} retries: {e}") from e
+
+        raise RuntimeError(f"LLM extraction failed: no retries configured (retries={retries})")
 
     def _parse_response(self, response: str) -> list[ExtractedEvent]:
         """Parse LLM response into structured events.

@@ -135,7 +135,7 @@ def posts_with_comments(
 
     logger.info(
         f"Successfully fetched {len(posts_dict)} posts with "
-        f"{sum(len(p['comments']) for p in posts_dict)} total comments"
+        f"{sum(len(p['comments']) for p in posts_dict)} total comments"  # type: ignore[misc, arg-type]
     )
     return posts_dict
 
@@ -175,10 +175,7 @@ def posts_metadata(posts_with_comments: list[dict]) -> dict:
     total_score = sum(post.get("score", 0) for post in posts_with_comments)
     avg_score = total_score / len(posts_with_comments) if posts_with_comments else 0
 
-    created_dates = [
-        datetime.fromisoformat(post["created_at"])
-        for post in posts_with_comments
-    ]
+    created_dates = [datetime.fromisoformat(post["created_at"]) for post in posts_with_comments]
     date_range = {
         "earliest": min(created_dates).isoformat() if created_dates else None,
         "latest": max(created_dates).isoformat() if created_dates else None,
@@ -189,7 +186,9 @@ def posts_metadata(posts_with_comments: list[dict]) -> dict:
         "subreddit": config.pipeline.target_subreddit,
         "total_posts": len(posts_with_comments),
         "total_comments": total_comments,
-        "avg_comments_per_post": total_comments / len(posts_with_comments) if posts_with_comments else 0,
+        "avg_comments_per_post": total_comments / len(posts_with_comments)
+        if posts_with_comments
+        else 0,
         "total_score": total_score,
         "avg_post_score": avg_score,
         "date_range": date_range,

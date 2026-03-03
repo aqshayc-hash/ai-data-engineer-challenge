@@ -18,7 +18,9 @@ class DatabaseConfig(BaseSettings):
     @property
     def connection_string(self) -> str:
         """Generate SQLAlchemy connection string."""
-        return f"postgresql+psycopg2://{self.user}:{self.password}@{self.host}:{self.port}/{self.db}"
+        return (
+            f"postgresql+psycopg2://{self.user}:{self.password}@{self.host}:{self.port}/{self.db}"
+        )
 
 
 class RedditConfig(BaseSettings):
@@ -79,9 +81,9 @@ class AppConfig(BaseSettings):
         extra="ignore",
     )
 
-    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
-    reddit: RedditConfig = Field(default_factory=RedditConfig)
-    google: GoogleConfig = Field(default_factory=GoogleConfig)
-    llm: LLMConfig = Field(default_factory=LLMConfig)
-    pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
+    database: DatabaseConfig = Field(default_factory=DatabaseConfig)  # type: ignore[arg-type]
+    reddit: RedditConfig = Field(default_factory=RedditConfig)  # type: ignore[arg-type]
+    google: GoogleConfig = Field(default_factory=GoogleConfig)  # type: ignore[arg-type]
+    llm: LLMConfig = Field(default_factory=LLMConfig)  # type: ignore[arg-type]
+    pipeline: PipelineConfig = Field(default_factory=PipelineConfig)  # type: ignore[arg-type]
     log_level: str = "INFO"

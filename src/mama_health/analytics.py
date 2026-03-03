@@ -21,13 +21,13 @@ class TemporalAnalyzer:
             Dict with 'value' and 'unit' or None if no duration found
         """
         # Pattern: number + unit (days, weeks, months, years)
-        duration_pattern = r'(\d+)\s*(day|week|month|year)s?'
+        duration_pattern = r"(\d+)\s*(day|week|month|year)s?"
         match = re.search(duration_pattern, text, re.IGNORECASE)
 
         if match:
             value = int(match.group(1))
             unit = match.group(2).lower()
-            return {'value': value, 'unit': unit}
+            return {"value": value, "unit": unit}
 
         return None
 
@@ -42,13 +42,13 @@ class TemporalAnalyzer:
             Number of days
         """
         unit_to_days = {
-            'day': 1,
-            'week': 7,
-            'month': 30,  # Approximate
-            'year': 365,  # Approximate
+            "day": 1,
+            "week": 7,
+            "month": 30,  # Approximate
+            "year": 365,  # Approximate
         }
 
-        return duration['value'] * unit_to_days.get(duration['unit'], 1)
+        return duration["value"] * unit_to_days.get(duration["unit"], 1)  # type: ignore[no-any-return]
 
     @staticmethod
     def symptom_to_diagnosis_timeline(
@@ -72,36 +72,35 @@ class TemporalAnalyzer:
 
         for source_key, source_events in by_source.items():
             # Find symptom_onset and diagnosis events
-            symptom_events = [e for e in source_events if e.event_type == 'symptom_onset']
-            diagnosis_events = [e for e in source_events if e.event_type == 'diagnosis']
+            symptom_events = [e for e in source_events if e.event_type == "symptom_onset"]
+            diagnosis_events = [e for e in source_events if e.event_type == "diagnosis"]
 
             # If both exist, extract temporal info
             if symptom_events and diagnosis_events:
                 for symptom in symptom_events:
                     for diagnosis in diagnosis_events:
                         # Try text-extracted durations first (more meaningful than post-date delta)
-                        duration = (
-                            TemporalAnalyzer.extract_duration_from_text(symptom.description)
-                            or TemporalAnalyzer.extract_duration_from_text(diagnosis.description)
-                        )
+                        duration = TemporalAnalyzer.extract_duration_from_text(
+                            symptom.description
+                        ) or TemporalAnalyzer.extract_duration_from_text(diagnosis.description)
                         if duration:
                             reported_days = TemporalAnalyzer.duration_to_days(duration)
                             duration_source = "text_extracted"
                         else:
                             delta = (diagnosis.timestamp_posted - symptom.timestamp_posted).days
-                            reported_days = delta if delta > 0 else None
-                            duration_source = "timestamp_delta" if reported_days else None
+                            reported_days = delta if delta > 0 else None  # type: ignore[assignment]
+                            duration_source = "timestamp_delta" if reported_days else None  # type: ignore[assignment]
 
                         timeline = {
-                            'post_id': symptom.source_post_id,
-                            'symptom_description': symptom.description,
-                            'diagnosis_description': diagnosis.description,
-                            'symptom_confidence': symptom.confidence,
-                            'diagnosis_confidence': diagnosis.confidence,
-                            'posted_at_symptom': symptom.timestamp_posted.isoformat(),
-                            'posted_at_diagnosis': diagnosis.timestamp_posted.isoformat(),
-                            'reported_duration_days': reported_days,
-                            'duration_source': duration_source,
+                            "post_id": symptom.source_post_id,
+                            "symptom_description": symptom.description,
+                            "diagnosis_description": diagnosis.description,
+                            "symptom_confidence": symptom.confidence,
+                            "diagnosis_confidence": diagnosis.confidence,
+                            "posted_at_symptom": symptom.timestamp_posted.isoformat(),
+                            "posted_at_diagnosis": diagnosis.timestamp_posted.isoformat(),
+                            "reported_duration_days": reported_days,
+                            "duration_source": duration_source,
                         }
                         timelines.append(timeline)
 
@@ -129,8 +128,9 @@ class TemporalAnalyzer:
         for post_id, post_events in by_post.items():
             # Find treatment pairs (initiated → changed or outcome)
             treatment_events = [
-                e for e in post_events
-                if 'treatment' in e.event_type or e.event_type == 'medication_side_effect'
+                e
+                for e in post_events
+                if "treatment" in e.event_type or e.event_type == "medication_side_effect"
             ]
 
             # Sort by timestamp
@@ -141,16 +141,16 @@ class TemporalAnalyzer:
                 current = treatment_events[i]
                 next_event = treatment_events[i + 1]
 
-                if current.event_type == 'treatment_initiated':
+                if current.event_type == "treatment_initiated":
                     duration_days = (next_event.timestamp_posted - current.timestamp_posted).days
 
                     phase = {
-                        'post_id': post_id,
-                        'treatment': current.mentioned_entity,
-                        'initiated_date': current.timestamp_posted.isoformat(),
-                        'next_event': next_event.event_type,
-                        'next_event_date': next_event.timestamp_posted.isoformat(),
-                        'phase_duration_days': duration_days,
+                        "post_id": post_id,
+                        "treatment": current.mentioned_entity,
+                        "initiated_date": current.timestamp_posted.isoformat(),
+                        "next_event": next_event.event_type,
+                        "next_event_date": next_event.timestamp_posted.isoformat(),
+                        "phase_duration_days": duration_days,
                     }
                     phases.append(phase)
 
@@ -173,7 +173,7 @@ class CoOccurrenceAnalyzer:
             Dict with co-occurrence counts and matrix
         """
         # Get all symptom mentions
-        symptom_events = [e for e in events if e.entity_type == 'symptom']
+        symptom_events = [e for e in events if e.entity_type == "symptom"]
 
         # Group symptoms by post/comment
         by_source = defaultdict(list)
@@ -182,7 +182,7 @@ class CoOccurrenceAnalyzer:
             by_source[key].append(event.mentioned_entity)
 
         # Build co-occurrence matrix
-        cooccurrence = Counter()
+        cooccurrence: Counter[tuple[str, ...]] = Counter()
         for source_symptoms in by_source.values():
             # Count pairs
             for i in range(len(source_symptoms)):
@@ -192,9 +192,9 @@ class CoOccurrenceAnalyzer:
 
         # Build result
         result = {
-            'total_symptom_mentions': len(symptom_events),
-            'unique_symptoms': len(set(e.mentioned_entity for e in symptom_events)),
-            'cooccurrence_pairs': dict(cooccurrence.most_common(20)),
+            "total_symptom_mentions": len(symptom_events),
+            "unique_symptoms": len(set(e.mentioned_entity for e in symptom_events)),
+            "cooccurrence_pairs": dict(cooccurrence.most_common(20)),
         }
 
         return result
@@ -211,11 +211,11 @@ class CoOccurrenceAnalyzer:
         Returns:
             Dict mapping medications to side effects
         """
-        medications = {}
+        medications: dict[str, dict] = {}
 
         # Find all medication and side effect events
-        med_events = [e for e in events if e.entity_type == 'medication']
-        side_effect_events = [e for e in events if e.event_type == 'medication_side_effect']
+        med_events = [e for e in events if e.entity_type == "medication"]
+        side_effect_events = [e for e in events if e.event_type == "medication_side_effect"]
 
         # Group by post/comment
         by_source = defaultdict(list)
@@ -225,33 +225,33 @@ class CoOccurrenceAnalyzer:
 
         # For each source, associate medications with side effects
         for source_events in by_source.values():
-            meds = [e for e in source_events if e.entity_type == 'medication']
-            side_effects = [e for e in source_events if e.event_type == 'medication_side_effect']
+            meds = [e for e in source_events if e.entity_type == "medication"]
+            side_effects = [e for e in source_events if e.event_type == "medication_side_effect"]
 
             for med in meds:
                 med_name = med.mentioned_entity
                 if med_name not in medications:
                     medications[med_name] = {
-                        'count': 0,
-                        'side_effects': Counter(),
-                        'avg_confidence': [],
+                        "count": 0,
+                        "side_effects": Counter(),
+                        "avg_confidence": [],
                     }
 
-                medications[med_name]['count'] += 1
-                medications[med_name]['avg_confidence'].append(med.confidence)
+                medications[med_name]["count"] += 1
+                medications[med_name]["avg_confidence"].append(med.confidence)
 
                 # Associate side effects
                 for se in side_effects:
-                    medications[med_name]['side_effects'][se.mentioned_entity] += 1
+                    medications[med_name]["side_effects"][se.mentioned_entity] += 1
 
         # Finalize
         for med_name in medications:
-            confidences = medications[med_name]['avg_confidence']
-            medications[med_name]['avg_confidence'] = (
+            confidences = medications[med_name]["avg_confidence"]
+            medications[med_name]["avg_confidence"] = (
                 sum(confidences) / len(confidences) if confidences else 0
             )
-            medications[med_name]['side_effects'] = dict(
-                medications[med_name]['side_effects'].most_common(5)
+            medications[med_name]["side_effects"] = dict(
+                medications[med_name]["side_effects"].most_common(5)
             )
 
         return medications
@@ -272,16 +272,16 @@ class SentimentAnalyzer:
         """
         event_type = event.event_type
 
-        if event_type in ['symptom_onset', 'symptom_progression']:
-            return 'symptom_phase'
-        elif event_type == 'diagnosis':
-            return 'diagnosis_phase'
-        elif event_type in ['treatment_initiated', 'treatment_changed']:
-            return 'treatment_phase'
-        elif event_type in ['treatment_outcome', 'lifestyle_change']:
-            return 'management_phase'
+        if event_type in ["symptom_onset", "symptom_progression"]:
+            return "symptom_phase"
+        elif event_type == "diagnosis":
+            return "diagnosis_phase"
+        elif event_type in ["treatment_initiated", "treatment_changed"]:
+            return "treatment_phase"
+        elif event_type in ["treatment_outcome", "lifestyle_change"]:
+            return "management_phase"
         else:
-            return 'other_phase'
+            return "other_phase"
 
     @staticmethod
     def emotional_phase_distribution(
@@ -302,15 +302,9 @@ class SentimentAnalyzer:
             phase_events[phase].append(event)
 
         result = {
-            'phase_distribution': {
-                phase: len(events) for phase, events in phase_events.items()
-            },
-            'avg_confidence_by_phase': {
-                phase: (
-                    sum(e.confidence for e in events) / len(events)
-                    if events
-                    else 0
-                )
+            "phase_distribution": {phase: len(events) for phase, events in phase_events.items()},
+            "avg_confidence_by_phase": {
+                phase: (sum(e.confidence for e in events) / len(events) if events else 0)
                 for phase, events in phase_events.items()
             },
         }
@@ -330,27 +324,43 @@ class SentimentAnalyzer:
         emotional_events_list = []
 
         for event in events:
-            if event.event_type == 'emotional_state' or event.event_type == 'unmet_need':
+            if event.event_type == "emotional_state" or event.event_type == "unmet_need":
                 # Classify sentiment based on keywords in description
-                sentiment = 'neutral'
+                sentiment = "neutral"
                 if any(
                     word in event.description.lower()
-                    for word in ['relieved', 'hopeful', 'grateful', 'finally', 'happy', 'better', 'helped']
+                    for word in [
+                        "relieved",
+                        "hopeful",
+                        "grateful",
+                        "finally",
+                        "happy",
+                        "better",
+                        "helped",
+                    ]
                 ):
-                    sentiment = 'positive'
+                    sentiment = "positive"
                 elif any(
                     word in event.description.lower()
-                    for word in ['hopeless', 'scared', 'frustrated', 'anxious', 'depressed', 'overwhelmed', 'devastated']
+                    for word in [
+                        "hopeless",
+                        "scared",
+                        "frustrated",
+                        "anxious",
+                        "depressed",
+                        "overwhelmed",
+                        "devastated",
+                    ]
                 ):
-                    sentiment = 'negative'
+                    sentiment = "negative"
 
                 emotional_events_list.append(
                     {
-                        'event_description': event.description,
-                        'mentioned_entity': event.mentioned_entity,
-                        'sentiment': sentiment,
-                        'confidence': event.confidence,
-                        'posted_at': event.timestamp_posted.isoformat(),
+                        "event_description": event.description,
+                        "mentioned_entity": event.mentioned_entity,
+                        "sentiment": sentiment,
+                        "confidence": event.confidence,
+                        "posted_at": event.timestamp_posted.isoformat(),
                     }
                 )
 
@@ -373,13 +383,13 @@ class UnmetNeedsAnalyzer:
         unmet_needs = []
 
         for event in events:
-            if event.event_type == 'unmet_need':
+            if event.event_type == "unmet_need":
                 need = {
-                    'description': event.description,
-                    'entity': event.mentioned_entity,
-                    'confidence': event.confidence,
-                    'posted_at': event.timestamp_posted.isoformat(),
-                    'post_id': event.source_post_id,
+                    "description": event.description,
+                    "entity": event.mentioned_entity,
+                    "confidence": event.confidence,
+                    "posted_at": event.timestamp_posted.isoformat(),
+                    "post_id": event.source_post_id,
                 }
                 unmet_needs.append(need)
 
@@ -398,12 +408,12 @@ class UnmetNeedsAnalyzer:
         needs = UnmetNeedsAnalyzer.identify_unmet_needs(events)
 
         # Group by entity type
-        entities = Counter(n['entity'] for n in needs)
-        avg_confidence = sum(n['confidence'] for n in needs) / len(needs) if needs else 0
+        entities = Counter(n["entity"] for n in needs)
+        avg_confidence = sum(n["confidence"] for n in needs) / len(needs) if needs else 0
 
         return {
-            'total_unmet_needs_identified': len(needs),
-            'unique_need_types': len(entities),
-            'most_common_needs': dict(entities.most_common(10)),
-            'avg_confidence': avg_confidence,
+            "total_unmet_needs_identified": len(needs),
+            "unique_need_types": len(entities),
+            "most_common_needs": dict(entities.most_common(10)),
+            "avg_confidence": avg_confidence,
         }

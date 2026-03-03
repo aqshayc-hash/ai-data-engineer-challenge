@@ -86,7 +86,7 @@ def test_reddit_post_with_comments():
     assert post.comments[0].author == "commenter"
 
 
-@patch('mama_health.reddit_client.praw.Reddit')
+@patch("mama_health.reddit_client.praw.Reddit")
 def test_reddit_client_initialization(mock_reddit_class, reddit_config):
     """Test RedditClient initialization."""
     mock_reddit = MagicMock()
@@ -100,7 +100,7 @@ def test_reddit_client_initialization(mock_reddit_class, reddit_config):
     mock_reddit_class.assert_called_once()
 
 
-@patch('mama_health.reddit_client.praw.Reddit')
+@patch("mama_health.reddit_client.praw.Reddit")
 def test_reddit_client_authentication_failure(mock_reddit_class, reddit_config):
     """Test RedditClient raises error on auth failure."""
     from praw.exceptions import ClientException
@@ -120,7 +120,7 @@ def test_rate_limiting():
         rate_limit_per_minute=120,  # 0.5s between requests
     )
 
-    with patch('mama_health.reddit_client.praw.Reddit'):
+    with patch("mama_health.reddit_client.praw.Reddit"):
         client = RedditClient(config)
 
         # Min interval should be 60/120 = 0.5 seconds
@@ -128,6 +128,7 @@ def test_rate_limiting():
 
 
 # ===== Checkpoint helper tests =====
+
 
 def test_load_checkpoint_no_file(tmp_path, monkeypatch):
     """Returns None when checkpoint file does not exist."""
@@ -163,3 +164,339 @@ def test_save_checkpoint_creates_file(tmp_path, monkeypatch):
     data = json.loads(checkpoint_file.read_text())
     assert "last_ingested_at" in data
     assert data["last_ingested_at"] == ts.isoformat()
+
+
+# ===== RedditClient.__init__ read-only mode =====
+
+
+@patch("mama_health.reddit_client.praw.Reddit")
+def test_reddit_client_readonly_mode_skips_user_me(mock_reddit_class):
+    """Client in read-only mode (no username) must NOT call user.me()."""
+    mock_reddit = MagicMock()
+    mock_reddit_class.return_value = mock_reddit
+
+    # Pass empty strings explicitly so .env values don't leak in via BaseSettings
+    config = RedditConfig(
+        client_id="fake_id",
+        client_secret="fake_secret",
+        user_agent="test/1.0",
+        username="",
+        password="",
+    )
+    client = RedditClient(config)
+
+    assert client is not None
+    mock_reddit.user.me.assert_not_called()
+
+
+# ===== RedditClient._rate_limit =====
+
+
+@patch("mama_health.reddit_client.praw.Reddit")
+def test_rate_limit_sleeps_when_too_fast(mock_reddit_class, monkeypatch):
+    """_rate_limit should call time.sleep() when requests arrive too quickly."""
+    mock_reddit_class.return_value = MagicMock()
+
+    config = RedditConfig(
+        client_id="x",
+        client_secret="x",
+        user_agent="x",
+        rate_limit_per_minute=60,  # 1-second interval
+    )
+    client = RedditClient(config)
+
+    sleep_calls = []
+    monkeypatch.setattr("mama_health.reddit_client.time.sleep", lambda s: sleep_calls.append(s))
+
+    # Simulate last request was only 0.1 s ago → should sleep ~0.9 s
+    with patch("mama_health.reddit_client.time.time", side_effect=[0.1, 1.0]):
+        client.last_request_time = 0.0
+        client._rate_limit()
+
+    assert len(sleep_calls) == 1
+    assert sleep_calls[0] == pytest.approx(0.9, abs=0.01)
+
+
+@patch("mama_health.reddit_client.praw.Reddit")
+def test_rate_limit_no_sleep_when_interval_satisfied(mock_reddit_class, monkeypatch):
+    """_rate_limit should NOT sleep when enough time has elapsed."""
+    mock_reddit_class.return_value = MagicMock()
+
+    config = RedditConfig(
+        client_id="x",
+        client_secret="x",
+        user_agent="x",
+        rate_limit_per_minute=60,
+    )
+    client = RedditClient(config)
+
+    sleep_calls = []
+    monkeypatch.setattr("mama_health.reddit_client.time.sleep", lambda s: sleep_calls.append(s))
+
+    # Simulate last request was 2 s ago — interval (1 s) already satisfied
+    with patch("mama_health.reddit_client.time.time", side_effect=[2.0, 2.0]):
+        client.last_request_time = 0.0
+        client._rate_limit()
+
+    assert sleep_calls == []
+
+
+# ===== RedditClient.fetch_posts — all 4 sort modes =====
+
+
+@pytest.mark.parametrize(
+    "sort,praw_method",
+    [
+        ("new", "new"),
+        ("hot", "hot"),
+        ("top", "top"),
+        ("controversial", "controversial"),
+    ],
+)
+@patch("mama_health.reddit_client.praw.Reddit")
+def test_fetch_posts_sort_modes(mock_reddit_class, sort, praw_method, mock_submission):
+    """fetch_posts calls the correct PRAW listing method for each sort value."""
+    mock_reddit = MagicMock()
+    mock_reddit_class.return_value = mock_reddit
+
+    mock_subreddit = MagicMock()
+    mock_subreddit.subscribers = 10000
+    getattr(mock_subreddit, praw_method).return_value = [mock_submission]
+    mock_reddit.subreddit.return_value = mock_subreddit
+
+    config = RedditConfig(client_id="x", client_secret="x", user_agent="x")
+    with patch("mama_health.reddit_client.time.time", return_value=9999.0):
+        client = RedditClient(config)
+        client.last_request_time = 0.0  # skip sleep
+
+    with patch("mama_health.reddit_client.time.time", return_value=9999.0):
+        with patch("mama_health.reddit_client.time.sleep"):
+            posts = client.fetch_posts("Crohns", sort=sort)
+
+    assert len(posts) == 1
+    getattr(mock_subreddit, praw_method).assert_called_once()
+
+
+@patch("mama_health.reddit_client.praw.Reddit")
+def test_fetch_posts_raises_on_inaccessible_subreddit(mock_reddit_class):
+    """fetch_posts raises ValueError when subreddit access fails."""
+    from praw.exceptions import PRAWException
+
+    mock_reddit = MagicMock()
+    mock_reddit_class.return_value = mock_reddit
+
+    mock_subreddit = MagicMock()
+    # Accessing .subscribers raises PRAWException
+    type(mock_subreddit).subscribers = property(
+        lambda self: (_ for _ in ()).throw(PRAWException("forbidden"))
+    )
+    mock_reddit.subreddit.return_value = mock_subreddit
+
+    config = RedditConfig(client_id="x", client_secret="x", user_agent="x")
+    with patch("mama_health.reddit_client.time.time", return_value=9999.0):
+        client = RedditClient(config)
+        client.last_request_time = 0.0
+
+    with patch("mama_health.reddit_client.time.time", return_value=9999.0):
+        with patch("mama_health.reddit_client.time.sleep"):
+            with pytest.raises(ValueError, match="Cannot access subreddit"):
+                client.fetch_posts("nonexistent_sub")
+
+
+# ===== RedditClient.fetch_comments =====
+
+
+@patch("mama_health.reddit_client.praw.Reddit")
+def test_fetch_comments_skips_deleted_author(mock_reddit_class, mock_submission):
+    """Comments with author=None (deleted) must be silently skipped."""
+    mock_reddit_class.return_value = MagicMock()
+
+    # Two comments: one deleted, one valid
+    deleted_comment = MagicMock()
+    deleted_comment.author = None
+
+    valid_comment = MagicMock()
+    valid_comment.id = "c001"
+    valid_comment.author = MagicMock()
+    valid_comment.author.name = "real_user"
+    valid_comment.body = "Helpful comment"
+    valid_comment.score = 5
+    valid_comment.created_utc = 1704067200.0
+    valid_comment.parent_id = "t3_abc123"
+
+    mock_submission.comments.list.return_value = [deleted_comment, valid_comment]
+
+    config = RedditConfig(client_id="x", client_secret="x", user_agent="x")
+    with patch("mama_health.reddit_client.time.time", return_value=9999.0):
+        client = RedditClient(config)
+        client.last_request_time = 0.0
+
+    with patch("mama_health.reddit_client.time.time", return_value=9999.0):
+        with patch("mama_health.reddit_client.time.sleep"):
+            comments = client.fetch_comments(mock_submission)
+
+    assert len(comments) == 1
+    assert comments[0].author == "real_user"
+
+
+@patch("mama_health.reddit_client.praw.Reddit")
+def test_fetch_comments_construction_error_skipped(mock_reddit_class, mock_submission):
+    """Comments that fail RedditComment() construction are skipped gracefully."""
+    mock_reddit_class.return_value = MagicMock()
+
+    bad_comment = MagicMock()
+    bad_comment.author = MagicMock()
+    bad_comment.author.name = "user"
+    bad_comment.id = "bad"
+    bad_comment.body = "text"
+    bad_comment.score = 1
+    bad_comment.created_utc = 1704067200.0
+    # parent_id without underscore — maps to parent_comment_id=None (valid)
+    bad_comment.parent_id = "no_underscore"  # actually this is fine; force error differently
+    # Make .score raise to trigger the except block
+    type(bad_comment).score = property(lambda self: (_ for _ in ()).throw(ValueError("bad score")))
+
+    good_comment = MagicMock()
+    good_comment.id = "g001"
+    good_comment.author = MagicMock()
+    good_comment.author.name = "good_user"
+    good_comment.body = "Good comment"
+    good_comment.score = 3
+    good_comment.created_utc = 1704067200.0
+    good_comment.parent_id = "t1_parent1"
+
+    mock_submission.comments.list.return_value = [bad_comment, good_comment]
+
+    config = RedditConfig(client_id="x", client_secret="x", user_agent="x")
+    with patch("mama_health.reddit_client.time.time", return_value=9999.0):
+        client = RedditClient(config)
+        client.last_request_time = 0.0
+
+    with patch("mama_health.reddit_client.time.time", return_value=9999.0):
+        with patch("mama_health.reddit_client.time.sleep"):
+            comments = client.fetch_comments(mock_submission)
+
+    assert len(comments) == 1
+    assert comments[0].author == "good_user"
+
+
+@pytest.mark.parametrize(
+    "parent_id,expected",
+    [
+        ("t1_abc123", "abc123"),  # standard parent comment reference
+        ("abc123", None),  # no underscore → no parent comment
+    ],
+)
+@patch("mama_health.reddit_client.praw.Reddit")
+def test_fetch_comments_parent_id_parsing(mock_reddit_class, mock_submission, parent_id, expected):
+    """parent_id string is parsed correctly into parent_comment_id."""
+    mock_reddit_class.return_value = MagicMock()
+
+    comment = MagicMock()
+    comment.id = "c001"
+    comment.author = MagicMock()
+    comment.author.name = "user"
+    comment.body = "text"
+    comment.score = 1
+    comment.created_utc = 1704067200.0
+    comment.parent_id = parent_id
+
+    mock_submission.comments.list.return_value = [comment]
+
+    config = RedditConfig(client_id="x", client_secret="x", user_agent="x")
+    with patch("mama_health.reddit_client.time.time", return_value=9999.0):
+        client = RedditClient(config)
+        client.last_request_time = 0.0
+
+    with patch("mama_health.reddit_client.time.time", return_value=9999.0):
+        with patch("mama_health.reddit_client.time.sleep"):
+            comments = client.fetch_comments(mock_submission)
+
+    assert len(comments) == 1
+    assert comments[0].parent_comment_id == expected
+
+
+# ===== RedditClient.submission_to_post =====
+
+
+@patch("mama_health.reddit_client.praw.Reddit")
+def test_submission_to_post_deleted_author(mock_reddit_class, mock_submission):
+    """submission_to_post uses '[deleted]' when author is None."""
+    mock_reddit_class.return_value = MagicMock()
+    mock_submission.author = None
+
+    config = RedditConfig(client_id="x", client_secret="x", user_agent="x")
+    with patch("mama_health.reddit_client.time.time", return_value=9999.0):
+        client = RedditClient(config)
+
+    post = client.submission_to_post(mock_submission)
+    assert post.author == "[deleted]"
+
+
+@patch("mama_health.reddit_client.praw.Reddit")
+def test_submission_to_post_no_comments_defaults_empty(mock_reddit_class, mock_submission):
+    """submission_to_post with comments=None returns post with empty comments list."""
+    mock_reddit_class.return_value = MagicMock()
+
+    config = RedditConfig(client_id="x", client_secret="x", user_agent="x")
+    with patch("mama_health.reddit_client.time.time", return_value=9999.0):
+        client = RedditClient(config)
+
+    post = client.submission_to_post(mock_submission, comments=None)
+    assert post.comments == []
+
+
+# ===== RedditClient.fetch_posts_with_comments =====
+
+
+@patch("mama_health.reddit_client.praw.Reddit")
+def test_fetch_posts_with_comments_skips_erroring_post(mock_reddit_class, mock_submission):
+    """fetch_posts_with_comments skips a post that errors during fetch_comments."""
+    mock_reddit_class.return_value = MagicMock()
+
+    config = RedditConfig(client_id="x", client_secret="x", user_agent="x")
+    with patch("mama_health.reddit_client.time.time", return_value=9999.0):
+        client = RedditClient(config)
+
+    sub_a = MagicMock()
+    sub_a.id = "ok1"
+    sub_b = MagicMock()
+    sub_b.id = "bad"
+    sub_c = MagicMock()
+    sub_c.id = "ok2"
+
+    def fake_fetch_posts(**kwargs):
+        return [sub_a, sub_b, sub_c]
+
+    def fake_fetch_comments(submission, limit=50):
+        if submission.id == "bad":
+            raise ValueError("comment fetch failed")
+        return []
+
+    def fake_submission_to_post(submission, comments=None):
+        from mama_health.models import RedditPost
+
+        return RedditPost(
+            post_id=submission.id,
+            title="title",
+            content="text",
+            author="user",
+            subreddit="Crohns",
+            score=1,
+            num_comments=0,
+            created_at=datetime(2024, 1, 1),
+            url="https://reddit.com/r/Crohns/1",
+            comments=comments or [],
+        )
+
+    client.fetch_posts = fake_fetch_posts
+    client.fetch_comments = fake_fetch_comments
+    client.submission_to_post = fake_submission_to_post
+
+    posts = client.fetch_posts_with_comments("Crohns")
+
+    assert len(posts) == 2
+    post_ids = {p.post_id for p in posts}
+    assert "ok1" in post_ids
+    assert "ok2" in post_ids
+    assert "bad" not in post_ids

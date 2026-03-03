@@ -40,7 +40,7 @@ def symptom_to_diagnosis_timeline(
 
     if timelines:
         # Log some statistics
-        avg_post_count = len(set(t.get('post_id') for t in timelines if 'post_id' in t))
+        avg_post_count = len(set(t.get("post_id") for t in timelines if "post_id" in t))
         logger.info(f"  Across {avg_post_count} posts")
 
     return timelines
@@ -68,7 +68,7 @@ def treatment_phase_duration(
 
     if phases:
         # Log treatment statistics
-        treatments = Counter(p.get('treatment') for p in phases)
+        treatments = Counter(p.get("treatment") for p in phases)
         logger.info(f"  {len(treatments)} unique treatments tracked")
         logger.info(f"  Most common: {treatments.most_common(3)}")
 
@@ -117,15 +117,13 @@ def medication_side_effect_associations(
     Returns:
         Dictionary mapping medications to side effects and frequency
     """
-    associations = CoOccurrenceAnalyzer.medication_side_effect_associations(
-        all_extracted_events
-    )
+    associations = CoOccurrenceAnalyzer.medication_side_effect_associations(all_extracted_events)
 
     logger.info("Medication analysis:")
     logger.info(f"  {len(associations)} medications tracked")
 
     if associations:
-        top_meds = sorted(associations.items(), key=lambda x: x[1]['count'], reverse=True)[:5]
+        top_meds = sorted(associations.items(), key=lambda x: x[1]["count"], reverse=True)[:5]
         for med_name, med_data in top_meds:
             logger.info(
                 f"    {med_name}: {med_data['count']} mentions, "
@@ -155,8 +153,8 @@ def emotional_journey_phases(
     phases = SentimentAnalyzer.emotional_phase_distribution(all_extracted_events)
 
     logger.info("Emotional journey phase distribution:")
-    for phase, count in phases['phase_distribution'].items():
-        avg_conf = phases['avg_confidence_by_phase'].get(phase, 0)
+    for phase, count in phases["phase_distribution"].items():
+        avg_conf = phases["avg_confidence_by_phase"].get(phase, 0)
         logger.info(f"  {phase}: {count} events (avg_conf={avg_conf:.2f})")
 
     return phases
@@ -184,7 +182,7 @@ def emotional_state_events(
     logger.info(f"  Total emotional events: {len(emotional_events)}")
 
     if emotional_events:
-        sentiment_counts = Counter(e['sentiment'] for e in emotional_events)
+        sentiment_counts = Counter(e["sentiment"] for e in emotional_events)
         for sentiment, count in sentiment_counts.items():
             logger.info(f"    {sentiment}: {count}")
 
@@ -214,7 +212,7 @@ def unmet_needs_identification(
     logger.info(f"  Total needs identified: {len(unmet_needs)}")
 
     if unmet_needs:
-        entities = Counter(n['entity'] for n in unmet_needs)
+        entities = Counter(n["entity"] for n in unmet_needs)
         logger.info(f"  Unique need categories: {len(entities)}")
         for category, count in entities.most_common(5):
             logger.info(f"    {category}: {count}")
@@ -266,9 +264,9 @@ def event_type_frequency(
     event_types = Counter(e.event_type for e in all_extracted_events)
 
     result = {
-        'total_events': len(all_extracted_events),
-        'unique_event_types': len(event_types),
-        'event_type_distribution': dict(event_types.most_common()),
+        "total_events": len(all_extracted_events),
+        "unique_event_types": len(event_types),
+        "event_type_distribution": dict(event_types.most_common()),
     }
 
     logger.info("Event type frequency distribution:")
@@ -298,31 +296,31 @@ def treatment_mention_frequency(
     """
     if not medication_mentions:
         return {
-            'total_medication_mentions': 0,
-            'unique_medications': 0,
-            'medication_frequency': {},
+            "total_medication_mentions": 0,
+            "unique_medications": 0,
+            "medication_frequency": {},
         }
 
     # Extract medication names and count
-    medications = Counter(m.get('name') for m in medication_mentions if m.get('name'))
+    medications = Counter(m.get("name") for m in medication_mentions if m.get("name"))
 
     # Group by efficacy if available
-    efficacy_by_med = {}
+    efficacy_by_med: dict[str, Counter[str]] = {}  # type: ignore[assignment]
     for mention in medication_mentions:
-        med_name = mention.get('name')
+        med_name = mention.get("name")
         if med_name and med_name not in efficacy_by_med:
             efficacy_by_med[med_name] = Counter()
 
-        if med_name and mention.get('efficacy'):
-            efficacy_by_med[med_name][mention['efficacy']] += 1
+        if med_name and mention.get("efficacy"):
+            efficacy_by_med[med_name][mention["efficacy"]] += 1
 
     result = {
-        'total_medication_mentions': len(medication_mentions),
-        'unique_medications': len(medications),
-        'medication_frequency': dict(medications.most_common()),
-        'medication_efficacy': {
+        "total_medication_mentions": len(medication_mentions),
+        "unique_medications": len(medications),
+        "medication_frequency": dict(medications.most_common()),
+        "medication_efficacy": {
             med: dict(efficacy_by_med[med].most_common())
-            for med in medications
+            for med in medications  # type: ignore[index]
         },
     }
 
@@ -353,31 +351,31 @@ def symptom_mention_frequency(
     """
     if not symptom_mentions:
         return {
-            'total_symptom_mentions': 0,
-            'unique_symptoms': 0,
-            'symptom_frequency': {},
+            "total_symptom_mentions": 0,
+            "unique_symptoms": 0,
+            "symptom_frequency": {},
         }
 
     # Extract symptom names and count
-    symptoms = Counter(s.get('name') for s in symptom_mentions if s.get('name'))
+    symptoms = Counter(s.get("name") for s in symptom_mentions if s.get("name"))
 
     # Severity distribution
-    severity_by_symptom = {}
+    severity_by_symptom: dict[str, Counter[str]] = {}  # type: ignore[assignment]
     for mention in symptom_mentions:
-        symptom_name = mention.get('name')
+        symptom_name = mention.get("name")
         if symptom_name and symptom_name not in severity_by_symptom:
             severity_by_symptom[symptom_name] = Counter()
 
-        if symptom_name and mention.get('severity'):
-            severity_by_symptom[symptom_name][mention['severity']] += 1
+        if symptom_name and mention.get("severity"):
+            severity_by_symptom[symptom_name][mention["severity"]] += 1
 
     result = {
-        'total_symptom_mentions': len(symptom_mentions),
-        'unique_symptoms': len(symptoms),
-        'symptom_frequency': dict(symptoms.most_common()),
-        'symptom_severity': {
+        "total_symptom_mentions": len(symptom_mentions),
+        "unique_symptoms": len(symptoms),
+        "symptom_frequency": dict(symptoms.most_common()),
+        "symptom_severity": {
             symptom: dict(severity_by_symptom[symptom].most_common())
-            for symptom in symptoms
+            for symptom in symptoms  # type: ignore[index]
         },
     }
 
@@ -426,54 +424,54 @@ def patient_journey_analytics_summary(
         Comprehensive analytics summary
     """
     summary = {
-        'generated_at': datetime.utcnow().isoformat(),
-        'total_events_analyzed': len(all_extracted_events),
-        'analytics': {
-            'temporal_analysis': {
-                'symptom_to_diagnosis_timelines': len(symptom_to_diagnosis_timeline),
-                'treatment_phase_transitions': len(treatment_phase_duration),
+        "generated_at": datetime.utcnow().isoformat(),
+        "total_events_analyzed": len(all_extracted_events),
+        "analytics": {
+            "temporal_analysis": {
+                "symptom_to_diagnosis_timelines": len(symptom_to_diagnosis_timeline),
+                "treatment_phase_transitions": len(treatment_phase_duration),
             },
-            'cooccurrence_analysis': {
-                'symptom_pairs': len(symptom_cooccurrence_mapping.get('cooccurrence_pairs', {})),
-                'medications_with_side_effects': len(medication_side_effect_associations),
+            "cooccurrence_analysis": {
+                "symptom_pairs": len(symptom_cooccurrence_mapping.get("cooccurrence_pairs", {})),
+                "medications_with_side_effects": len(medication_side_effect_associations),
             },
-            'emotional_journey': {
-                'phases_identified': len(emotional_journey_phases['phase_distribution']),
-                'emotional_events_count': sum(
-                    emotional_journey_phases['phase_distribution'].values()
+            "emotional_journey": {
+                "phases_identified": len(emotional_journey_phases["phase_distribution"]),
+                "emotional_events_count": sum(
+                    emotional_journey_phases["phase_distribution"].values()
                 ),
             },
-            'unmet_needs': unmet_needs_summary['total_unmet_needs_identified'],
-            'event_frequencies': {
-                'event_types': event_type_frequency['unique_event_types'],
-                'treatments': treatment_mention_frequency['unique_medications'],
-                'symptoms': symptom_mention_frequency['unique_symptoms'],
+            "unmet_needs": unmet_needs_summary["total_unmet_needs_identified"],
+            "event_frequencies": {
+                "event_types": event_type_frequency["unique_event_types"],
+                "treatments": treatment_mention_frequency["unique_medications"],
+                "symptoms": symptom_mention_frequency["unique_symptoms"],
             },
         },
-        'key_findings': {
-            'most_common_symptom': (
-                next(iter(symptom_mention_frequency['symptom_frequency']))
-                if symptom_mention_frequency['symptom_frequency']
+        "key_findings": {
+            "most_common_symptom": (
+                next(iter(symptom_mention_frequency["symptom_frequency"]))
+                if symptom_mention_frequency["symptom_frequency"]
                 else None
             ),
-            'most_mentioned_treatment': (
-                next(iter(treatment_mention_frequency['medication_frequency']))
-                if treatment_mention_frequency['medication_frequency']
+            "most_mentioned_treatment": (
+                next(iter(treatment_mention_frequency["medication_frequency"]))
+                if treatment_mention_frequency["medication_frequency"]
                 else None
             ),
-            'most_common_side_effect': (
+            "most_common_side_effect": (
                 next(
                     (
                         side_effect
                         for med_data in medication_side_effect_associations.values()
-                        for side_effect in med_data.get('side_effects', {}).keys()
+                        for side_effect in med_data.get("side_effects", {}).keys()
                     ),
                     None,
                 )
             ),
-            'primary_unmet_need': (
-                next(iter(unmet_needs_summary['most_common_needs'].items()))[0]
-                if unmet_needs_summary['most_common_needs']
+            "primary_unmet_need": (
+                next(iter(unmet_needs_summary["most_common_needs"].items()))[0]
+                if unmet_needs_summary["most_common_needs"]
                 else None
             ),
         },
@@ -485,19 +483,20 @@ def patient_journey_analytics_summary(
     logger.info(f"Total events analyzed: {summary['total_events_analyzed']}")
     logger.info(f"Generated: {summary['generated_at']}")
     logger.info("\nKey Analytics:")
-    logger.info(f"  Symptom-Diagnosis Timelines: {summary['analytics']['temporal_analysis']['symptom_to_diagnosis_timelines']}")
+    analytics = summary["analytics"]  # type: ignore[index]
     logger.info(
-        f"  Treatment Phase Transitions: {summary['analytics']['temporal_analysis']['treatment_phase_transitions']}"
+        f"  Symptom-Diagnosis Timelines: {analytics['temporal_analysis']['symptom_to_diagnosis_timelines']}"  # type: ignore[index]
     )
     logger.info(
-        f"  Symptom Co-occurrence Pairs: {summary['analytics']['cooccurrence_analysis']['symptom_pairs']}"
+        f"  Treatment Phase Transitions: {analytics['temporal_analysis']['treatment_phase_transitions']}"  # type: ignore[index]
     )
     logger.info(
-        f"  Medications Tracked: {summary['analytics']['event_frequencies']['treatments']}"
+        f"  Symptom Co-occurrence Pairs: {analytics['cooccurrence_analysis']['symptom_pairs']}"  # type: ignore[index]
     )
-    logger.info(f"  Unmet Needs Identified: {summary['analytics']['unmet_needs']}")
+    logger.info(f"  Medications Tracked: {analytics['event_frequencies']['treatments']}")  # type: ignore[index]
+    logger.info(f"  Unmet Needs Identified: {analytics['unmet_needs']}")  # type: ignore[index]
     logger.info("\nKey Findings:")
-    for key, value in summary['key_findings'].items():
+    for key, value in summary["key_findings"].items():  # type: ignore[index, union-attr, attr-defined]
         logger.info(f"  {key}: {value}")
     logger.info("=" * 60)
 

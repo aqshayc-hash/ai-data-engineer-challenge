@@ -114,10 +114,14 @@ class PatientJourneyEvent(BaseModel):
     event_id: str = Field(..., description="Unique event identifier")
     source_post_id: str = Field(..., description="Source Reddit post ID")
     source_comment_id: Optional[str] = Field(None, description="Source comment ID if from comment")
-    event_type: EventTypeLiteral = Field(..., description="Type of event (symptom, diagnosis, treatment, etc)")
+    event_type: EventTypeLiteral = Field(
+        ..., description="Type of event (symptom, diagnosis, treatment, etc)"
+    )
     description: str = Field(..., description="Human-readable description")
     mentioned_entity: str = Field(..., description="Main entity mentioned (e.g. medication name)")
-    entity_type: EntityTypeLiteral = Field(..., description="Type of entity (medication, symptom, procedure, etc)")
+    entity_type: EntityTypeLiteral = Field(
+        ..., description="Type of entity (medication, symptom, procedure, etc)"
+    )
     timestamp_mentioned: Optional[datetime] = Field(None, description="When event occurred")
     timestamp_posted: datetime = Field(..., description="When post/comment was made")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Extraction confidence score (0-1)")
