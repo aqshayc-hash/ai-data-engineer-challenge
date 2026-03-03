@@ -1,20 +1,25 @@
-.PHONY: help install up down logs clean test lint format
+.PHONY: help install up down logs clean test lint format typecheck build
 
 help:
 	@echo "Available commands:"
-	@echo "  make install       - Install dependencies with uv"
-	@echo "  make up            - Start Docker Compose services"
+	@echo "  make install       - Install all dependencies with uv (including dev)"
+	@echo "  make build         - Build the Docker image"
+	@echo "  make up            - Start Docker Compose services (detached)"
 	@echo "  make down          - Stop Docker Compose services"
-	@echo "  make logs          - View Docker logs"
-	@echo "  make clean         - Remove Docker containers and volumes"
-	@echo "  make test          - Run pytest tests"
-	@echo "  make lint          - Run code linting (ruff)"
-	@echo "  make format        - Format code with black"
+	@echo "  make logs          - Tail Docker Compose logs"
+	@echo "  make clean         - Remove Docker containers, volumes, and caches"
+	@echo "  make test          - Run pytest with coverage"
+	@echo "  make lint          - Lint with ruff"
+	@echo "  make format        - Auto-format with black"
+	@echo "  make typecheck     - Type-check with mypy"
 	@echo "  make dagster-ui    - Open Dagster UI in browser"
 
 install:
 	uv venv
-	uv sync
+	uv sync --dev
+
+build:
+	docker compose build
 
 up:
 	docker compose up -d
@@ -32,13 +37,16 @@ clean:
 	rm -rf .pytest_cache .mypy_cache .coverage htmlcov
 
 test:
-	pytest -v tests/
+	uv run pytest tests/ -v
 
 lint:
-	ruff check src/ tests/
+	uv run ruff check src/ tests/
 
 format:
-	black src/ tests/
+	uv run black src/ tests/
+
+typecheck:
+	uv run mypy src/mama_health/ --ignore-missing-imports
 
 dagster-ui:
 	start http://localhost:3000 || open http://localhost:3000 || echo "Visit http://localhost:3000"

@@ -29,6 +29,7 @@ from mama_health.assets.reddit_ingestion import (
     raw_posts_json,
     reddit_client,
 )
+from mama_health.assets.storage import events_stored_to_postgres
 
 __all__ = [
     # Reddit ingestion
@@ -57,4 +58,6 @@ __all__ = [
     "treatment_mention_frequency",
     "symptom_mention_frequency",
     "patient_journey_analytics_summary",
+    # Storage
+    "events_stored_to_postgres",
 ]

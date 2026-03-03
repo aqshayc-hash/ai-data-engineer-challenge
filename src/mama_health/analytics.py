@@ -79,16 +79,29 @@ class TemporalAnalyzer:
             if symptom_events and diagnosis_events:
                 for symptom in symptom_events:
                     for diagnosis in diagnosis_events:
-                        # Use temporal indicators if available
-                        # This is a simplified version - in reality would parse temporal_indicators
+                        # Try text-extracted durations first (more meaningful than post-date delta)
+                        duration = (
+                            TemporalAnalyzer.extract_duration_from_text(symptom.description)
+                            or TemporalAnalyzer.extract_duration_from_text(diagnosis.description)
+                        )
+                        if duration:
+                            reported_days = TemporalAnalyzer.duration_to_days(duration)
+                            duration_source = "text_extracted"
+                        else:
+                            delta = (diagnosis.timestamp_posted - symptom.timestamp_posted).days
+                            reported_days = delta if delta > 0 else None
+                            duration_source = "timestamp_delta" if reported_days else None
+
                         timeline = {
                             'post_id': symptom.source_post_id,
                             'symptom_description': symptom.description,
                             'diagnosis_description': diagnosis.description,
                             'symptom_confidence': symptom.confidence,
                             'diagnosis_confidence': diagnosis.confidence,
-                            'symptom_posted_at': symptom.timestamp_posted.isoformat(),
-                            'diagnosis_posted_at': diagnosis.timestamp_posted.isoformat(),
+                            'posted_at_symptom': symptom.timestamp_posted.isoformat(),
+                            'posted_at_diagnosis': diagnosis.timestamp_posted.isoformat(),
+                            'reported_duration_days': reported_days,
+                            'duration_source': duration_source,
                         }
                         timelines.append(timeline)
 
@@ -322,12 +335,12 @@ class SentimentAnalyzer:
                 sentiment = 'neutral'
                 if any(
                     word in event.description.lower()
-                    for word in ['improve', 'better', 'helped', 'great', 'excellent']
+                    for word in ['relieved', 'hopeful', 'grateful', 'finally', 'happy', 'better', 'helped']
                 ):
                     sentiment = 'positive'
                 elif any(
                     word in event.description.lower()
-                    for word in ['worse', 'terrible', 'awful', 'struggle', 'difficult', 'pain']
+                    for word in ['hopeless', 'scared', 'frustrated', 'anxious', 'depressed', 'overwhelmed', 'devastated']
                 ):
                     sentiment = 'negative'
 
