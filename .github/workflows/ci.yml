@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+
+jobs:
+  test:
+    name: Lint, type-check, and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Lint with ruff
+        run: uv run ruff check src/ tests/
+
+      - name: Type-check with mypy
+        run: uv run mypy src/mama_health/ --ignore-missing-imports
+        # Non-blocking for now: mypy errors are reported but don't fail the build
+        continue-on-error: true
+
+      - name: Run tests with coverage
+        run: uv run pytest tests/ -q --cov=src --cov-report=term-missing
+        env:
+          # Provide minimal env so config validation doesn't fail
+          REDDIT_CLIENT_ID: "ci-placeholder"
+          REDDIT_CLIENT_SECRET: "ci-placeholder"
+          REDDIT_USER_AGENT: "ci/0.1"
+          GOOGLE_API_KEY: "ci-placeholder"
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-html
+          path: htmlcov/
+          retention-days: 7
