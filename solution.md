@@ -12,7 +12,8 @@ journeys, and unmet patient needs.
 1. [Quick Start](#quick-start)
 2. [Architecture](#architecture)
 3. [Partitions & Scheduling](#partitions--scheduling)
-4. [Project Structure](#project-structure)
+4. [Visualization Dashboard](#visualization-dashboard)
+5. [Project Structure](#project-structure)
 5. [Condition & Subreddit Choice](#condition--subreddit-choice)
 6. [Prompt Design](#prompt-design)
 7. [Analytics Design](#analytics-design)
@@ -257,6 +258,59 @@ Backfilling partitions for dates older than ~30 days will return zero posts
 because those posts are no longer in the recent feed. This is a Reddit API
 constraint, not a Dagster limitation. For historical data beyond 30 days,
 consider using the Reddit Pushshift archive or a dedicated data dump.
+
+---
+
+## Visualization Dashboard
+
+A standalone Streamlit dashboard renders the pipeline's analytics outputs as
+interactive charts. It reads partition outputs directly from the
+`dagster_storage/` directory written by `FilesystemIOManager`.
+
+### URL
+
+```
+http://localhost:8501
+```
+
+### Four tabs
+
+| Tab | Data source(s) | Chart |
+|-----|---------------|-------|
+| **Overview** | `patient_journey_analytics_summary` | KPI metric cards + JSON key findings |
+| **Symptom Co-occurrence** | `symptom_cooccurrence_mapping` | Plotly heatmap (top-20 pairs) |
+| **Sentiment Timeline** | `emotional_state_events`, `emotional_journey_phases` | Scatter by confidence + bar by phase |
+| **Patient Pathway** | `symptom_to_diagnosis_timeline`, `treatment_phase_duration` | Sankey diagram |
+
+### How data is shared (Docker)
+
+A named Docker volume `dagster_storage_data` is mounted at `/app/dagster_storage`
+in both the `dagster-user-code` service (where Dagster writes asset outputs) and
+the `streamlit` service (where the dashboard reads them). This means any partition
+materialised in the Dagster UI is immediately visible in the Streamlit sidebar
+after clicking **Refresh data**.
+
+```
+dagster-user-code  ─writes──► dagster_storage_data (volume) ◄──reads─  streamlit
+```
+
+### Local development
+
+```bash
+# Install dashboard dependencies
+pip install streamlit plotly
+# or, if using uv:
+uv sync
+
+# Run against local dagster_storage/
+streamlit run dashboard/app.py
+# Opens at http://localhost:8501
+```
+
+When no pipeline data exists yet, each tab shows an informational prompt.
+After materialising any partition in the Dagster UI, click **Refresh data**
+in the sidebar — the partition appears in the dropdown and charts render
+with real data.
 
 ---
 

@@ -62,6 +62,7 @@ services:
       CHECKPOINT_PATH: /app/checkpoints/ingestion_checkpoint.json
     volumes:
       - checkpoint_data:/app/checkpoints
+      - dagster_storage_data:/app/dagster_storage
     ports:
       - "4000:4000"
     healthcheck:
@@ -131,9 +132,28 @@ services:
     networks:
       - mama-network
 
+  streamlit:
+    build: .
+    image: mama-health-dagster:latest
+    container_name: mama-streamlit
+    command: ["streamlit", "run", "dashboard/app.py",
+              "--server.port", "8501", "--server.address", "0.0.0.0"]
+    ports:
+      - "8501:8501"
+    environment:
+      DAGSTER_STORAGE_PATH: /app/dagster_storage
+    volumes:
+      - dagster_storage_data:/app/dagster_storage
+    depends_on:
+      dagster-user-code:
+        condition: service_healthy
+    networks:
+      - mama-network
+
 volumes:
   postgres_data:
   checkpoint_data:
+  dagster_storage_data:
 
 networks:
   mama-network:
