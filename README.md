@@ -41,13 +41,22 @@ git clone <your-repo-url>
 cd ai-data-engineer-challenge
 
 cp .env.example .env
-# Edit .env and fill in the three required secrets:
-#   REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, GOOGLE_API_KEY
+# Edit .env — three values must be filled in before the pipeline will run:
+#   REDDIT_CLIENT_ID      → from https://www.reddit.com/prefs/apps (create a "script" app)
+#   REDDIT_CLIENT_SECRET  → same app registration page
+#   GOOGLE_API_KEY        → from https://aistudio.google.com/apikey (free, no billing required)
+#
+# All other values (model, subreddit, limits, Postgres) have sensible defaults in .env.example
+# and do not need to be changed for a first run.
 ```
 
+> **Note:** The `.env` file is intentionally not committed to the repository — it contains
+> your personal API credentials. `.env.example` documents every variable with its default
+> value and is safe to commit. Never commit your actual `.env`.
+
 **Get credentials:**
-- Reddit API: <https://www.reddit.com/prefs/apps> → create a "script" app
-- Google Gemini: <https://aistudio.google.com/apikey> → free key, no billing required
+- Reddit API: <https://www.reddit.com/prefs/apps> → create a "script" type app → copy Client ID and Client Secret
+- Google Gemini: <https://aistudio.google.com/apikey> → click "Create API key" → free tier, no billing required
 
 ### 2. Start the full stack
 
