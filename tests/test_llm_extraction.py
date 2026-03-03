@@ -1,20 +1,20 @@
 """Tests for LLM extraction."""
 
 import json
-import pytest
 from unittest.mock import MagicMock, patch
-from datetime import datetime
 
-from mama_health.llm_extractor import LLMExtractor, ExtractedEvent
+import pytest
+
+from mama_health.config import AppConfig
+from mama_health.llm_extractor import ExtractedEvent, LLMExtractor
 from mama_health.models import PatientJourneyEvent
-from mama_health.config import AppConfig, LLMConfig
-from mama_health.prompts import EventType, EntityType, get_prompt_variant
+from mama_health.prompts import EntityType, EventType, get_prompt_variant
 
 
 def test_event_type_enum():
     """Test EventType enum contains expected values."""
     event_types = [e.value for e in EventType]
-    
+
     assert "diagnosis" in event_types
     assert "symptom_onset" in event_types
     assert "treatment_initiated" in event_types
@@ -24,7 +24,7 @@ def test_event_type_enum():
 def test_entity_type_enum():
     """Test EntityType enum contains expected values."""
     entity_types = [e.value for e in EntityType]
-    
+
     assert "symptom" in entity_types
     assert "medication" in entity_types
     assert "condition" in entity_types
@@ -40,7 +40,7 @@ def test_extracted_event_validation():
         entity_type="condition",
         confidence=0.95,
     )
-    
+
     assert event.event_id == "e001"
     assert event.confidence == 0.95
     assert event.quote is None
@@ -69,13 +69,13 @@ def test_extracted_event_to_journey_event():
         entity_type="condition",
         confidence=0.95,
     )
-    
+
     journey_event = extracted.to_patient_journey_event(
         source_post_id="post123",
         source_comment_id=None,
         posted_timestamp="2024-01-15T10:00:00",
     )
-    
+
     assert isinstance(journey_event, PatientJourneyEvent)
     assert journey_event.source_post_id == "post123"
     assert journey_event.confidence == 0.95
@@ -85,7 +85,7 @@ def test_get_prompt_variant_general():
     """Test general prompt variant."""
     text = "I was diagnosed with Crohn's disease."
     prompt = get_prompt_variant("general", text, "Test post")
-    
+
     assert "Crohn's disease" in prompt
     assert "Test post" in prompt
     assert "JSON" in prompt
@@ -95,7 +95,7 @@ def test_get_prompt_variant_symptoms():
     """Test symptoms-focused prompt variant."""
     text = "I had terrible pain for months."
     prompt = get_prompt_variant("symptoms", text)
-    
+
     assert "symptoms" in prompt.lower()
     assert "pain" in prompt
 
@@ -104,7 +104,7 @@ def test_get_prompt_variant_medications():
     """Test medications-focused prompt variant."""
     text = "Started taking ibuprofen but it gave me headaches."
     prompt = get_prompt_variant("medications", text)
-    
+
     assert "medication" in prompt.lower()
     assert "ibuprofen" in prompt
 
@@ -117,9 +117,9 @@ def test_extract_json_from_text_array():
         {"event_id": "e001", "type": "test"}
     ]
     """
-    
+
     extracted = LLMExtractor._extract_json(text)
-    
+
     assert extracted is not None
     assert extracted.startswith("[")
     assert extracted.endswith("]")
@@ -134,9 +134,9 @@ def test_extract_json_from_text_object():
     }
     More text after.
     """
-    
+
     extracted = LLMExtractor._extract_json(text)
-    
+
     assert extracted is not None
     assert extracted.startswith("{")
 
@@ -152,19 +152,19 @@ def test_extract_json_nested():
         }
     ]
     """
-    
+
     extracted = LLMExtractor._extract_json(text)
     parsed = json.loads(extracted)
-    
+
     assert parsed[0]["data"]["nested"] is True
 
 
 def test_extract_json_not_found():
     """Test handling when no JSON found."""
     text = "No JSON here, just plain text."
-    
+
     extracted = LLMExtractor._extract_json(text)
-    
+
     assert extracted is None
 
 
@@ -172,12 +172,12 @@ def test_extract_json_not_found():
 def test_llm_extractor_initialization(mock_completion):
     """Test LLMExtractor initialization."""
     config = AppConfig()
-    
+
     # Mock successful authentication
     mock_completion.return_value = MagicMock()
-    
+
     extractor = LLMExtractor(config)
-    
+
     assert extractor is not None
     assert "gemini" in extractor.model
 
@@ -196,7 +196,7 @@ def test_parse_response_array(mock_completion):
     """Test parsing LLM response as array."""
     config = AppConfig()
     extractor = LLMExtractor(config)
-    
+
     response = json.dumps([
         {
             "event_id": "e001",
@@ -207,9 +207,9 @@ def test_parse_response_array(mock_completion):
             "confidence": 0.95,
         }
     ])
-    
+
     events = extractor._parse_response(response)
-    
+
     assert len(events) == 1
     assert events[0].event_type == "diagnosis"
 
@@ -219,10 +219,10 @@ def test_parse_response_with_context(mock_completion):
     """Test parsing response with surrounding text."""
     config = AppConfig()
     extractor = LLMExtractor(config)
-    
+
     response = """
     Here are the extracted events:
-    
+
     [
         {
             "event_id": "e001",
@@ -233,12 +233,12 @@ def test_parse_response_with_context(mock_completion):
             "confidence": 0.88
         }
     ]
-    
+
     As you can see, one key event was extracted.
     """
-    
+
     events = extractor._parse_response(response)
-    
+
     assert len(events) == 1
     assert events[0].event_type == "symptom_onset"
 
@@ -248,11 +248,11 @@ def test_parse_response_invalid_json(mock_completion):
     """Test parsing invalid JSON returns empty list."""
     config = AppConfig()
     extractor = LLMExtractor(config)
-    
+
     response = "This is not valid JSON"
-    
+
     events = extractor._parse_response(response)
-    
+
     assert events == []
 
 
@@ -261,12 +261,12 @@ def test_extract_events_empty_text(mock_completion):
     """Test extracting from empty text returns empty list."""
     config = AppConfig()
     extractor = LLMExtractor(config)
-    
+
     events = extractor.extract_events(
         text="",
         source_post_id="post123",
     )
-    
+
     assert events == []
 
 
@@ -275,7 +275,7 @@ def test_extract_events_filtering_by_confidence(mock_call):
     """Test filtering events by confidence threshold."""
     config = AppConfig()
     extractor = LLMExtractor(config)
-    
+
     response = json.dumps([
         {
             "event_id": "e001",
@@ -294,15 +294,15 @@ def test_extract_events_filtering_by_confidence(mock_call):
             "confidence": 0.3,  # Low - should be filtered
         }
     ])
-    
+
     mock_call.return_value = response
-    
+
     events = extractor.extract_events(
         text="Some medical text",
         source_post_id="post123",
         min_confidence=0.5,
     )
-    
+
     assert len(events) == 1
     assert events[0].confidence == 0.95
 
@@ -312,7 +312,7 @@ def test_batch_extract(mock_completion):
     """Test batch extraction."""
     config = AppConfig()
     extractor = LLMExtractor(config)
-    
+
     # Mock LLM responses
     response = json.dumps([
         {
@@ -324,11 +324,11 @@ def test_batch_extract(mock_completion):
             "confidence": 0.95,
         }
     ])
-    
+
     mock_completion.return_value = MagicMock(
         choices=[MagicMock(message=MagicMock(content=response))]
     )
-    
+
     items = [
         {
             "text": "I was diagnosed.",
@@ -339,16 +339,16 @@ def test_batch_extract(mock_completion):
             "post_id": "post2",
         }
     ]
-    
+
     events = extractor.batch_extract(items)
-    
+
     assert len(events) >= 0  # May vary based on LLM responses
 
 
 def test_prompt_has_json_instruction():
     """Test that prompts include JSON format instructions."""
     text = "Test text"
-    
+
     for prompt_type in ["general", "symptoms", "medications", "timeline", "emotion", "needs"]:
         prompt = get_prompt_variant(prompt_type, text)
         assert "JSON" in prompt or "json" in prompt.lower(), f"Prompt {prompt_type} missing JSON instruction"
@@ -357,7 +357,7 @@ def test_prompt_has_json_instruction():
 def test_extraction_system_prompt_is_conservative():
     """Test that system prompt emphasizes conservative extraction."""
     from mama_health.prompts import EXTRACTION_SYSTEM_PROMPT
-    
+
     assert "ONLY" in EXTRACTION_SYSTEM_PROMPT
     assert "NOT infer" in EXTRACTION_SYSTEM_PROMPT or "not" in EXTRACTION_SYSTEM_PROMPT.lower()
     assert "confidence" in EXTRACTION_SYSTEM_PROMPT.lower()

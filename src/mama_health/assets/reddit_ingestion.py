@@ -2,7 +2,7 @@
 
 import json
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from dagster import AssetExecutionContext, asset, get_dagster_logger
 

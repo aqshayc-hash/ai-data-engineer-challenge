@@ -1,7 +1,8 @@
 """Tests for patient journey analytics."""
 
-import pytest
 from datetime import datetime
+
+import pytest
 
 from mama_health.analytics import (
     CoOccurrenceAnalyzer,
