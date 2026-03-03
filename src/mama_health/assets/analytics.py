@@ -12,12 +12,13 @@ from mama_health.analytics import (
     UnmetNeedsAnalyzer,
 )
 from mama_health.models import PatientJourneyEvent
+from mama_health.partitions import daily_partitions
 
 logger = get_dagster_logger()
 
 
 # ===== Temporal Analysis =====
-@asset
+@asset(group_name="analytics", partitions_def=daily_partitions)
 def symptom_to_diagnosis_timeline(
     all_extracted_events: list[PatientJourneyEvent],
 ) -> list[dict]:
@@ -45,7 +46,7 @@ def symptom_to_diagnosis_timeline(
     return timelines
 
 
-@asset
+@asset(group_name="analytics", partitions_def=daily_partitions)
 def treatment_phase_duration(
     all_extracted_events: list[PatientJourneyEvent],
 ) -> list[dict]:
@@ -75,7 +76,7 @@ def treatment_phase_duration(
 
 
 # ===== Co-occurrence Analysis =====
-@asset
+@asset(group_name="analytics", partitions_def=daily_partitions)
 def symptom_cooccurrence_mapping(
     all_extracted_events: list[PatientJourneyEvent],
 ) -> dict:
@@ -101,7 +102,7 @@ def symptom_cooccurrence_mapping(
     return cooccurrence
 
 
-@asset
+@asset(group_name="analytics", partitions_def=daily_partitions)
 def medication_side_effect_associations(
     all_extracted_events: list[PatientJourneyEvent],
 ) -> dict:
@@ -135,7 +136,7 @@ def medication_side_effect_associations(
 
 
 # ===== Sentiment & Emotional Journey =====
-@asset
+@asset(group_name="analytics", partitions_def=daily_partitions)
 def emotional_journey_phases(
     all_extracted_events: list[PatientJourneyEvent],
 ) -> dict:
@@ -161,7 +162,7 @@ def emotional_journey_phases(
     return phases
 
 
-@asset
+@asset(group_name="analytics", partitions_def=daily_partitions)
 def emotional_state_events(
     all_extracted_events: list[PatientJourneyEvent],
 ) -> list[dict]:
@@ -191,7 +192,7 @@ def emotional_state_events(
 
 
 # ===== Unmet Needs =====
-@asset
+@asset(group_name="analytics", partitions_def=daily_partitions)
 def unmet_needs_identification(
     all_extracted_events: list[PatientJourneyEvent],
 ) -> list[dict]:
@@ -221,7 +222,7 @@ def unmet_needs_identification(
     return unmet_needs
 
 
-@asset
+@asset(group_name="analytics", partitions_def=daily_partitions)
 def unmet_needs_summary(
     all_extracted_events: list[PatientJourneyEvent],
 ) -> dict:
@@ -247,7 +248,7 @@ def unmet_needs_summary(
 
 
 # ===== Reporting & Aggregation =====
-@asset
+@asset(group_name="analytics", partitions_def=daily_partitions)
 def event_type_frequency(
     all_extracted_events: list[PatientJourneyEvent],
 ) -> dict:
@@ -279,7 +280,7 @@ def event_type_frequency(
     return result
 
 
-@asset
+@asset(group_name="analytics", partitions_def=daily_partitions)
 def treatment_mention_frequency(
     medication_mentions: list[dict],
 ) -> dict:
@@ -335,7 +336,7 @@ def treatment_mention_frequency(
     return result
 
 
-@asset
+@asset(group_name="analytics", partitions_def=daily_partitions)
 def symptom_mention_frequency(
     symptom_mentions: list[dict],
 ) -> dict:
@@ -391,7 +392,7 @@ def symptom_mention_frequency(
 
 
 # ===== Comprehensive Analytics Summary =====
-@asset
+@asset(group_name="analytics", partitions_def=daily_partitions)
 def patient_journey_analytics_summary(
     all_extracted_events: list[PatientJourneyEvent],
     symptom_to_diagnosis_timeline: list[dict],

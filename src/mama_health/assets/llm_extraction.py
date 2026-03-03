@@ -7,12 +7,13 @@ from dagster import asset, get_dagster_logger
 from mama_health.config import AppConfig
 from mama_health.llm_extractor import LLMExtractor
 from mama_health.models import PatientJourneyEvent
+from mama_health.partitions import daily_partitions
 from mama_health.prompts import get_prompt_variant
 
 logger = get_dagster_logger()
 
 
-@asset
+@asset(group_name="extraction")
 def llm_extractor() -> LLMExtractor:
     """Initialize LLM extractor service.
 
@@ -23,7 +24,7 @@ def llm_extractor() -> LLMExtractor:
     return LLMExtractor(config)
 
 
-@asset
+@asset(group_name="extraction", partitions_def=daily_partitions)
 def extracted_post_events(
     llm_extractor: LLMExtractor,
     posts_with_comments: list[dict],
@@ -64,7 +65,7 @@ def extracted_post_events(
     return all_events
 
 
-@asset
+@asset(group_name="extraction", partitions_def=daily_partitions)
 def extracted_comment_events(
     llm_extractor: LLMExtractor,
     posts_with_comments: list[dict],
@@ -109,7 +110,7 @@ def extracted_comment_events(
     return all_events
 
 
-@asset
+@asset(group_name="extraction", partitions_def=daily_partitions)
 def all_extracted_events(
     extracted_post_events: list[PatientJourneyEvent],
     extracted_comment_events: list[PatientJourneyEvent],
@@ -142,7 +143,7 @@ def all_extracted_events(
     return all_events
 
 
-@asset
+@asset(group_name="extraction", partitions_def=daily_partitions)
 def symptom_mentions(
     llm_extractor: LLMExtractor,
     posts_with_comments: list[dict],
@@ -193,7 +194,7 @@ def symptom_mentions(
     return all_symptoms
 
 
-@asset
+@asset(group_name="extraction", partitions_def=daily_partitions)
 def medication_mentions(
     llm_extractor: LLMExtractor,
     posts_with_comments: list[dict],
@@ -244,7 +245,7 @@ def medication_mentions(
     return all_medications
 
 
-@asset
+@asset(group_name="extraction", partitions_def=daily_partitions)
 def extraction_quality_metrics(
     all_extracted_events: list[PatientJourneyEvent],
 ) -> dict:

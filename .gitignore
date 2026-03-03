@@ -42,6 +42,7 @@ env/
 # Dagster
 .dagster_temp/
 .dagster/
+dagster_storage/
 
 # pytest
 .pytest_cache/

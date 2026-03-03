@@ -11,13 +11,14 @@ journeys, and unmet patient needs.
 
 1. [Quick Start](#quick-start)
 2. [Architecture](#architecture)
-3. [Project Structure](#project-structure)
-4. [Condition & Subreddit Choice](#condition--subreddit-choice)
-5. [Prompt Design](#prompt-design)
-6. [Analytics Design](#analytics-design)
-7. [Example Output](#example-output)
-8. [Development](#development)
-9. [Configuration Reference](#configuration-reference)
+3. [Partitions & Scheduling](#partitions--scheduling)
+4. [Project Structure](#project-structure)
+5. [Condition & Subreddit Choice](#condition--subreddit-choice)
+6. [Prompt Design](#prompt-design)
+7. [Analytics Design](#analytics-design)
+8. [Example Output](#example-output)
+9. [Development](#development)
+10. [Configuration Reference](#configuration-reference)
 
 ---
 
@@ -136,17 +137,19 @@ pytest tests/ -q
 
 ### Jobs and their asset scopes
 
+All jobs are **partitioned** — each run targets a specific calendar-day partition.
+Launching a run prompts for a partition key (e.g. `2024-03-15`).
+
 | Job | Asset groups included | Typical use |
 |-----|-----------------------|-------------|
-| `reddit_ingestion_job` | `ingestion` | Fetch new posts |
-| `llm_extraction_job` | `ingestion` + `extraction` | Re-extract without re-fetching |
-| `analytics_job` | all (full chain) | Re-run analytics |
-| `end_to_end_job` | all (full chain) | Complete pipeline run |
+| `reddit_ingestion_job` | `ingestion` | Fetch new posts for a day |
+| `llm_extraction_job` | `ingestion` + `extraction` | Re-extract a day without re-fetching |
+| `analytics_job` | all (full chain) | Re-run analytics for a day |
+| `end_to_end_job` | all (full chain) | Complete pipeline run for a day |
 
-> **Why `analytics_job` includes all groups:** No I/O managers are configured,
-> so upstream outputs live only in memory. The full chain must execute together
-> in a single run. Add `FilesystemIOManager` or `PickledObjectFilesystemIOManager`
-> to enable partial re-runs.
+> **Partial re-runs enabled:** `FilesystemIOManager` persists each partition's
+> asset outputs to `dagster_storage/<asset_name>/<partition_key>/`. Downstream
+> assets can be re-run independently without re-executing upstream assets.
 
 ### Infrastructure
 
@@ -166,6 +169,94 @@ pytest tests/ -q
 │                                └──────────────────────┘ │
 └──────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Partitions & Scheduling
+
+### Daily partitions
+
+Every data asset in the pipeline is assigned a
+`DailyPartitionsDefinition(start_date="2024-01-01")` partition, defined in
+`src/mama_health/partitions.py`. Each calendar day is an independent,
+replayable execution unit. Service assets (`reddit_client`, `llm_extractor`)
+are intentionally *unpartitioned* — they are stateless constructors whose
+output is the same regardless of which day is being processed.
+
+### Partition scope
+
+| Asset | Group | Partitioned? | Reason |
+|-------|-------|-------------|--------|
+| `reddit_client` | ingestion | No | Pure service — creates PRAW client |
+| `posts_with_comments` | ingestion | Yes | Entry point; fetches posts for that day |
+| `raw_posts_json` | ingestion | Yes | Downstream of above |
+| `posts_metadata` | ingestion | Yes | Downstream of above |
+| `llm_extractor` | extraction | No | Pure service — creates LLMExtractor |
+| `extracted_post_events` | extraction | Yes | Processes data for that partition |
+| `extracted_comment_events` | extraction | Yes | Processes data for that partition |
+| `all_extracted_events` | extraction | Yes | Combines partition events |
+| `symptom_mentions` | extraction | Yes | Processes data for that partition |
+| `medication_mentions` | extraction | Yes | Processes data for that partition |
+| `extraction_quality_metrics` | extraction | Yes | Metrics for that partition |
+| All 12 analytics assets | analytics | Yes | Compute insights for that partition |
+
+### How partition-key windowing works
+
+`posts_with_comments` replaces the file-based checkpoint with a deterministic
+date window derived from the partition key:
+
+```python
+start_dt = datetime.strptime(context.partition_key, "%Y-%m-%d")
+end_dt   = start_dt + timedelta(days=1)
+filtered = [p for p in posts if start_dt <= p.created_at < end_dt]
+```
+
+This makes each day's run idempotent and independently replayable.
+
+### FilesystemIOManager
+
+Asset outputs are persisted to `dagster_storage/<asset>/<partition_key>/`
+via `FilesystemIOManager(base_dir="dagster_storage")` (configured in
+`dagster_definitions.py`). This means:
+
+- Downstream assets can be re-run without re-fetching upstream data
+- Partition outputs survive across restarts
+- `dagster_storage/` is git-ignored (local runtime artefact)
+
+### Schedules
+
+| Schedule | Cron | Job | Purpose |
+|----------|------|-----|---------|
+| `daily_pipeline_schedule` | `0 2 * * *` (daily at 2 AM UTC) | `end_to_end_job` | Routine daily ingestion |
+| `weekly_pipeline_schedule` | `0 2 * * 0` (Sundays at 2 AM UTC) | `end_to_end_job` | Lower-volume subreddits |
+
+Both schedules are registered in `Definitions` and visible in the Dagster UI
+under **Schedules**. They are created off by default; enable them in the UI
+or via `dagster schedule start`.
+
+### How to run backfills
+
+**Dagster UI:** Assets → select any data asset → "Launch backfill" → choose
+a date range. Each selected day is queued as an independent run. Already-
+materialised partitions can be skipped (shown in green) or re-run.
+
+**CLI (inside container):**
+
+```bash
+# Backfill one week of the end-to-end pipeline
+dagster job backfill -j end_to_end_job --from 2024-01-01 --to 2024-01-07
+
+# Backfill just the ingestion layer
+dagster job backfill -j reddit_ingestion_job --from 2024-01-01 --to 2024-01-07
+```
+
+### Known limitation: PRAW recency constraint
+
+Reddit's PRAW API fetches posts by recency (`new` sort, `time_filter="month"`).
+Backfilling partitions for dates older than ~30 days will return zero posts
+because those posts are no longer in the recent feed. This is a Reddit API
+constraint, not a Dagster limitation. For historical data beyond 30 days,
+consider using the Reddit Pushshift archive or a dedicated data dump.
 
 ---
 
@@ -537,12 +628,27 @@ make dagster-ui        # opens http://localhost:3000
 # After `make up`:
 docker exec mama-user-code dagster job execute \
   -f src/mama_health/dagster_definitions.py \
-  -j reddit_ingestion_job
+  -j reddit_ingestion_job \
+  --partition 2024-03-15
 
 docker exec mama-user-code dagster job execute \
   -f src/mama_health/dagster_definitions.py \
-  -j end_to_end_job
+  -j end_to_end_job \
+  --partition 2024-03-15
 ```
+
+### Triggering a partition backfill from the CLI
+
+```bash
+# Backfill the first week of 2024 for the complete pipeline
+dagster job backfill -j end_to_end_job --from 2024-01-01 --to 2024-01-07
+
+# Backfill ingestion only
+dagster job backfill -j reddit_ingestion_job --from 2024-01-01 --to 2024-01-07
+```
+
+Each day in the range is queued as an independent run. Materialised partitions
+(green in the UI) can be skipped or forcibly re-run.
 
 ### Changing the target subreddit
 

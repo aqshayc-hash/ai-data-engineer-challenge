@@ -4,9 +4,10 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 
-from dagster import asset, get_dagster_logger
+from dagster import AssetExecutionContext, asset, get_dagster_logger
 
 from mama_health.config import AppConfig
+from mama_health.partitions import daily_partitions
 from mama_health.reddit_client import RedditClient
 
 logger = get_dagster_logger()
@@ -45,7 +46,7 @@ def _save_checkpoint(timestamp: datetime) -> None:
         logger.warning(f"Failed to save checkpoint: {e}")
 
 
-@asset
+@asset(group_name="ingestion")
 def reddit_client() -> RedditClient:
     """Initialize Reddit API client.
 
@@ -56,16 +57,20 @@ def reddit_client() -> RedditClient:
     return RedditClient(config.reddit)
 
 
-@asset
-def posts_with_comments(reddit_client: RedditClient) -> list[dict]:
-    """Fetch posts with their comments from subreddit.
+@asset(group_name="ingestion", partitions_def=daily_partitions)
+def posts_with_comments(
+    context: AssetExecutionContext,
+    reddit_client: RedditClient,
+) -> list[dict]:
+    """Fetch posts with their comments from subreddit for a specific day partition.
 
-    This asset retrieves complete posts including all comments, implementing
-    the full workflow for gathering community discussion around health topics.
-    Incremental loading is supported via a checkpoint file — only posts newer
-    than the last successful run are returned.
+    This asset retrieves complete posts including all comments for the calendar
+    day identified by the partition key. Each day is an independent, replayable
+    unit — enabling historical backfills and preventing re-processing of
+    already-ingested days.
 
     Args:
+        context: Dagster asset execution context (provides partition_key)
         reddit_client: Configured Reddit API client
 
     Returns:
@@ -73,17 +78,13 @@ def posts_with_comments(reddit_client: RedditClient) -> list[dict]:
     """
     config = AppConfig()
 
-    # Determine cutoff: resume from checkpoint or fall back to search_limit_days
-    checkpoint_ts = _load_checkpoint()
-    if checkpoint_ts is not None:
-        cutoff = checkpoint_ts
-        logger.info(f"Resuming from checkpoint: {cutoff.isoformat()}")
-    else:
-        cutoff = datetime.now(tz=timezone.utc) - timedelta(days=config.pipeline.search_limit_days)
-        logger.info(
-            f"No checkpoint found — fetching last {config.pipeline.search_limit_days} days "
-            f"(cutoff: {cutoff.isoformat()})"
-        )
+    # Determine the partition window (naive UTC datetimes to match post.created_at)
+    start_dt = datetime.strptime(context.partition_key, "%Y-%m-%d")
+    end_dt = start_dt + timedelta(days=1)
+    logger.info(
+        f"Fetching posts for partition {context.partition_key} "
+        f"(window: {start_dt.isoformat()} — {end_dt.isoformat()})"
+    )
 
     logger.info(
         f"Fetching posts with comments from r/{config.pipeline.target_subreddit} "
@@ -97,12 +98,11 @@ def posts_with_comments(reddit_client: RedditClient) -> list[dict]:
         time_filter="month",
     )
 
-    # Apply date filter — keep only posts newer than the cutoff
-    cutoff_naive = cutoff.replace(tzinfo=None)
-    filtered_posts = [p for p in posts if p.created_at >= cutoff_naive]
+    # Apply date filter — keep only posts within the partition window
+    filtered_posts = [p for p in posts if start_dt <= p.created_at < end_dt]
 
     logger.info(
-        f"Date filter: {len(posts)} fetched → {len(filtered_posts)} posts after cutoff"
+        f"Date filter: {len(posts)} fetched → {len(filtered_posts)} posts in partition window"
     )
 
     # Convert to dictionaries for storage
@@ -133,11 +133,6 @@ def posts_with_comments(reddit_client: RedditClient) -> list[dict]:
         for post in filtered_posts
     ]
 
-    # Save checkpoint to the latest post timestamp
-    if posts_dict:
-        latest_ts = max(datetime.fromisoformat(p["created_at"]) for p in posts_dict)
-        _save_checkpoint(latest_ts)
-
     logger.info(
         f"Successfully fetched {len(posts_dict)} posts with "
         f"{sum(len(p['comments']) for p in posts_dict)} total comments"
@@ -145,7 +140,7 @@ def posts_with_comments(reddit_client: RedditClient) -> list[dict]:
     return posts_dict
 
 
-@asset
+@asset(group_name="ingestion", partitions_def=daily_partitions)
 def raw_posts_json(posts_with_comments: list[dict]) -> str:
     """Store raw posts as JSON blob.
 
@@ -162,7 +157,7 @@ def raw_posts_json(posts_with_comments: list[dict]) -> str:
     return json_data
 
 
-@asset
+@asset(group_name="ingestion", partitions_def=daily_partitions)
 def posts_metadata(posts_with_comments: list[dict]) -> dict:
     """Extract metadata about the ingestion.
 
