@@ -19,7 +19,8 @@ immediately functional.
 7. [Prompt Design Decisions](#prompt-design-decisions)
 8. [Analytics Design Decisions](#analytics-design-decisions)
 9. [Example Output](#example-output)
-10. [Configuration Reference](#configuration-reference)
+10. [Testing](#testing)
+11. [Configuration Reference](#configuration-reference)
 
 ---
 
@@ -87,7 +88,7 @@ docker exec mama-user-code dagster job execute \
 ```bash
 uv venv && uv sync --extra dev
 pytest tests/ -q
-# ~50 tests
+# 106 tests
 ```
 
 ---
@@ -267,12 +268,14 @@ ai-data-engineer-challenge/
 │       └── types.py            # Type aliases: PostDict, CommentDict, EventList, ...
 │
 └── tests/
-    ├── conftest.py             # Shared fixtures (sample_events)
-    ├── test_basic.py           # Smoke: imports, version, config init
-    ├── test_reddit_ingestion.py # 15 tests: models, client, checkpoints
-    ├── test_llm_extraction.py   # 23 tests: enums, prompts, JSON parsing, LLM mock
-    ├── test_analytics.py        # 12 tests: all 4 analyzer classes
-    └── test_dagster_assets.py   # 7 smoke tests: asset function return types
+    ├── conftest.py                  # Fixtures: sample_events (7), large_sample_events (21), mock Reddit
+    ├── test_basic.py                # Smoke: imports, version, config init
+    ├── test_reddit_ingestion.py     # 25 tests: PRAW-mocked client, rate limiting, sort modes
+    ├── test_llm_extraction.py       # 28 tests: JSON parsing edge cases, retry logic, negative paths
+    ├── test_analytics.py            # 12 tests: all 4 analyzer classes
+    ├── test_dagster_assets.py       # 14 tests: all asset groups incl. symptom/medication mentions
+    ├── test_storage.py              # 4 tests: mocked SQLAlchemy write, idempotency
+    └── test_dagster_definitions.py  # 5 smoke tests: jobs, schedules, assets registered
 ```
 
 ---
@@ -341,11 +344,19 @@ All prompts share these constraints (enforced in `EXTRACTION_SYSTEM_PROMPT`):
 Each prompt embeds a concrete JSON example in the instruction. The parser
 (`LLMExtractor._extract_json`) uses a two-pass strategy:
 
-1. Search for a top-level JSON array (`[...]`)
-2. Fallback: search for a JSON object (`{...}`) and wrap it
+1. Search for a top-level JSON array (`[...]`) using a bracket depth counter
+2. Fallback: search for a JSON object (`{...}`) and wrap it as a single-item list
 
-This handles the common failure modes of Gemini adding markdown fences, prose
-preambles, or returning a single object instead of a list.
+This handles the common failure modes of Gemini adding markdown fences (` ```json `),
+prose preambles, or returning a single object instead of a list.
+
+**`gemini-2.5-flash` compatibility note:** This model uses internal reasoning tokens
+that count toward the `max_tokens` budget. Setting `LLM_MAX_TOKENS=4096` (instead of
+the default 1000) ensures the JSON response is never truncated mid-array.
+Additionally, the extractor normalises any LLM-returned `event_type` or `entity_type`
+values that fall outside the schema's allowed set (e.g. `"medication, specialist"`) to
+`"other"` before Pydantic validation, preventing a single malformed field from silently
+dropping an entire post's extracted events.
 
 ### Temperature and retry strategy
 
@@ -619,6 +630,45 @@ Total                                        ~8 min   (LLM calls dominate)
 
 ---
 
+## Testing
+
+```bash
+# Run all tests with coverage
+uv run pytest tests/ -v --cov=src --cov-report=term-missing
+
+# Run a specific suite
+uv run pytest tests/test_llm_extraction.py -v
+
+# Type-check
+uv run mypy src/mama_health/ --ignore-missing-imports
+
+# Format check
+uv run ruff format --check src/ tests/
+```
+
+### Test coverage summary (106 tests)
+
+| File | Scope | Key scenarios |
+|------|-------|---------------|
+| `test_reddit_ingestion.py` | `RedditClient` | All 4 sort modes, rate-limit sleep, deleted-author comments, parent ID parsing, graceful error skipping |
+| `test_llm_extraction.py` | `LLMExtractor` | `_extract_json` edge cases (unclosed, empty, nested), retry exhaustion, whitespace-only input, malformed JSON, Pydantic validation skip |
+| `test_dagster_assets.py` | All asset groups | `symptom_mentions`, `medication_mentions` with mocked LLM; `extraction_quality_metrics` with empty and populated inputs |
+| `test_storage.py` | `events_stored_to_postgres` | Empty write (returns 0), single event write, row columns validated, DELETE-before-INSERT idempotency |
+| `test_dagster_definitions.py` | `get_definitions()` | Returns `Definitions`, all 4 jobs registered, both schedules registered, assets and IO manager present |
+| `test_analytics.py` | `analytics.py` | All 4 analyzer classes across 12 tests |
+| `test_basic.py` | imports, config | Smoke tests for module loading and config initialisation |
+
+### CI (GitHub Actions)
+
+The `.github/workflows/ci.yml` pipeline runs on every push and pull request:
+
+1. **Lint** — `ruff check src/ tests/`
+2. **Format check** — `ruff format --check src/ tests/`
+3. **Type check** — `mypy src/mama_health/ --ignore-missing-imports` *(blocking)*
+4. **Tests** — `pytest tests/ --cov=src --cov-report=xml`
+
+---
+
 ## Configuration Reference
 
 All configuration is via environment variables, documented in `.env.example`.
@@ -635,9 +685,9 @@ All configuration is via environment variables, documented in `.env.example`.
 | `POSTS_LIMIT` | `100` | Max posts to fetch per run |
 | `COMMENTS_LIMIT` | `50` | Max top-level comments per post |
 | `SEARCH_LIMIT_DAYS` | `30` | Days back to look on first run |
-| `LLM_MODEL` | `gemini/gemini-pro` | litellm model string |
+| `LLM_MODEL` | `gemini/gemini-2.5-flash` | litellm model string |
 | `LLM_TEMPERATURE` | `0.3` | Lower = more deterministic output |
-| `LLM_MAX_TOKENS` | `1000` | Max tokens per LLM response |
+| `LLM_MAX_TOKENS` | `4096` | Max tokens per LLM response (gemini-2.5-flash uses reasoning tokens internally, so 1000 is too low) |
 | `POSTGRES_USER` | `dagster` | PostgreSQL user |
 | `POSTGRES_PASSWORD` | `dagster` | PostgreSQL password |
 | `POSTGRES_DB` | `mama_health` | PostgreSQL database name |
