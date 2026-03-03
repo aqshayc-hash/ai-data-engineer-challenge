@@ -319,7 +319,7 @@ def treatment_mention_frequency(
         "unique_medications": len(medications),
         "medication_frequency": dict(medications.most_common()),
         "medication_efficacy": {
-            med: dict(efficacy_by_med[med].most_common())
+            med: dict(efficacy_by_med[med].most_common())  # type: ignore[index]
             for med in medications  # type: ignore[index]
         },
     }
@@ -374,7 +374,7 @@ def symptom_mention_frequency(
         "unique_symptoms": len(symptoms),
         "symptom_frequency": dict(symptoms.most_common()),
         "symptom_severity": {
-            symptom: dict(severity_by_symptom[symptom].most_common())
+            symptom: dict(severity_by_symptom[symptom].most_common())  # type: ignore[index]
             for symptom in symptoms  # type: ignore[index]
         },
     }

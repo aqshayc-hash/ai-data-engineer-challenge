@@ -43,14 +43,41 @@ class ExtractedEvent(BaseModel):
             datetime.fromisoformat(posted_timestamp) if posted_timestamp else datetime.utcnow()
         )
 
+        _valid_event_types = {
+            "symptom_onset",
+            "symptom_progression",
+            "medical_visit",
+            "diagnosis",
+            "treatment_initiated",
+            "treatment_changed",
+            "medication_side_effect",
+            "treatment_outcome",
+            "emotional_state",
+            "lifestyle_change",
+            "unmet_need",
+            "other",
+        }
+        _valid_entity_types = {
+            "symptom",
+            "condition",
+            "medication",
+            "procedure",
+            "specialist",
+            "emotion",
+            "duration",
+            "other",
+        }
+        event_type = self.event_type if self.event_type in _valid_event_types else "other"
+        entity_type = self.entity_type if self.entity_type in _valid_entity_types else "other"
+
         return PatientJourneyEvent(
             event_id=self.event_id,
             source_post_id=source_post_id,
             source_comment_id=source_comment_id,
-            event_type=self.event_type,  # type: ignore[arg-type]
+            event_type=event_type,  # type: ignore[arg-type]
             description=self.description,
             mentioned_entity=self.mentioned_entity,
-            entity_type=self.entity_type,  # type: ignore[arg-type]
+            entity_type=entity_type,  # type: ignore[arg-type]
             timestamp_mentioned=None,  # Could be parsed from temporal_indicators
             timestamp_posted=posted_dt,
             confidence=self.confidence,
@@ -130,15 +157,21 @@ class LLMExtractor:
             # Filter by confidence
             filtered_events = [event for event in events if event.confidence >= min_confidence]
 
-            # Convert to PatientJourneyEvent
-            journey_events = [
-                event.to_patient_journey_event(
-                    source_post_id=source_post_id,
-                    source_comment_id=source_comment_id,
-                    posted_timestamp=posted_timestamp,
-                )
-                for event in filtered_events
-            ]
+            # Convert to PatientJourneyEvent (skip any that fail validation)
+            journey_events = []
+            for event in filtered_events:
+                try:
+                    journey_events.append(
+                        event.to_patient_journey_event(
+                            source_post_id=source_post_id,
+                            source_comment_id=source_comment_id,
+                            posted_timestamp=posted_timestamp,
+                        )
+                    )
+                except Exception as conv_err:
+                    logger.warning(
+                        f"Skipping event {event.event_id} due to conversion error: {conv_err}"
+                    )
 
             logger.info(
                 f"Extracted {len(journey_events)} events from "
